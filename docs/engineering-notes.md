@@ -286,3 +286,46 @@ DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_stor
 - 渐进上屏优先于「等扫完再画」：大目录等待期间用户能先看已经完成的子项。
 - 规则只做确定性判断，且**没有证据就当 `unknown`**；模型的判断必须经 `disk_canvas_claim` 写入并标 `agent`。
 - 不做删除/隔离区/撤销：执行面需要另一套契约（确认清单、可撤销、占用检测），v0 刻意留白。
+
+## 2026-10-19 · 1.1.0 语义层（去 classify / 删隔离区 / facet）
+
+产品决定记在 `annotation-canvas/PRODUCT.md`「第十三轮修订」；这里只记实现与验证。
+
+### 实现
+
+- **删掉路径判断**：`classify()`、`SYSTEM`/`PERSONAL` 正则、五档 risk 全部移除。扫描只产出事实
+  （bytes / files / latestModified / kind / partial），`PATTERN_GROUPS` 降级为「收集机制」，
+  只决定哪些目录名值得记进索引，不再给风险档。
+- **语义层** `lib/src/semantics.mjs`：`snapshotOf()` 记录写语义时对象的样子（体积/文件数/日期），
+  `semanticState()` 判 `fresh | stale | orphan`。目录按「≥25% 且 ≥1 MB（或 ≥50 个文件）」判变化，
+  文件按体积或日期判——刻意不用哈希分桶：桶边界会让 5% 的变化偶尔翻档，看起来像「对象变了」。
+  `store.setClaim` 写入时算快照；`pendingSemantics()` 给 Agent 一份「该看哪些」的清单。
+- **删隔离区**：删除 `lib/src/quarantine.mjs` + 路由 + 视图（净减 ~300 行）。脚本改为直接
+  `mv` 到 `~/.Trash/`（同名加时间后缀），不写 manifest。替换物是**执行台账**：上一轮标了
+  `delete`、这一轮扫描里消失的项记一条 `{at, count, bytes, paths}`（每根 20 条），只回答
+  「处理过没有、回收多少」，不提供恢复。
+- **配色换轴**：方块默认中性；标题行是 facet（Agent 给的 category），点一个高亮该类、其余降饱和
+  （`.dc-rect[data-dim="true"]`）。风险色、色条、swatch、legend 全部删除。
+- **文案**：`risk` → `category`；检查器显示 `label / claim / evidence / 标注于`，`stale` 时给
+  「对象已变化」chip 与提醒。
+
+### 验证（隔离环境）
+
+- `npm test`：24 项通过（新增 `semantics.test.mjs` 5 项、`executions.test.mjs` 2 项；删掉 classify 3 项、
+  隔离区 5 项）。
+- 隔离站：`DSH_HOME=/tmp/dsh-canvas-verify`，`dsh plugin --profile web add` 安装 1.1.0 tarball，
+  `dsh web --port 0` 启动无告警。`GET /state` 正常；`POST /scan {"path":"/tmp/dc-fixture"}` 正常；
+  条目里已没有 `risk`，未标注项 `semantic: null`。
+- 客户端 bundle：从 `__DSH_BOOT__` 取 `plugins/??dsh-disk-canvas/client.js&rev=…` → 200 / 128 KB，
+  含 `dc-facet`、`labeledNote`、`semantic` 标记，说明新代码真的进了 bundle（不是旧包）。
+
+### 卡住的地方（下轮别重复踩）
+
+- **浏览器里的画布仍未做完整视觉验收**：这个环境没有可用的模型凭据，而会话页签只在真实会话里出现。
+  试过：`dsh headless` 用假 key 会在鉴权失败前先落一个会话（`sessions/--tmp-dc-fixture--/`），
+  但 web 侧边栏不从磁盘反扫会话，只认 `storages/workspace.json` 里 `tables.workspaces[].sessionIds`；
+  手工把 session id 填进去、重启后侧边栏仍不显示（另有 session 索引/投影层没被填充）。
+  下次要么用真实凭据发一条消息，要么先弄清会话索引的写入路径（`session_projcache` 之类），
+  不要再从「选择工作区 → 菜单项」这条 UI 路径硬点。
+- `npm pack` 在本机因 `~/.npm` 属主是 root 会失败：用 `npm_config_cache=/tmp/dc-npm-cache npm pack`。
+- 同版本重装必须 `remove` + `add`；本次换了版本号所以直接 `add` 生效。

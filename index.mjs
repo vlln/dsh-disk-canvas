@@ -10,7 +10,6 @@ import { scanChildren } from './lib/src/scan.mjs'
 import { createStore } from './lib/src/store.mjs'
 import { createLedger } from './lib/src/ledger.mjs'
 import { PATHS } from './lib/src/routes.mjs'
-import { listQuarantine, restoreQuarantine } from './lib/src/quarantine.mjs'
 import { json, readJson, isCrossOrigin } from './lib/src/http.mjs'
 
 export const name = 'dsh-disk-canvas'
@@ -97,15 +96,18 @@ export function apply(ctx, config) {
       plan: snap.plan,
       since: snap.delta,
       history: snap.history,
+      executions: snap.executions,
+      // 让 Agent 知道「这层里哪些还没有语义、哪些已经过期」——省得它整层重标
+      pending: store.pendingSemantics(30),
       entries: snap.entries.slice(0, limit).map((e) => ({
         path: e.path,
         kind: e.kind,
         bytes: e.bytes,
         files: e.files,
-        risk: e.risk,
         claim: e.claim,
         confidence: e.confidence,
         source: e.source,
+        semantic: e.semantic ?? null,
         decision: snap.annotations[e.path]?.decision ?? null,
         deltaBytes: e.deltaBytes ?? null,
       })),
@@ -224,22 +226,6 @@ export function apply(ctx, config) {
       }),
       ctx.webServer.register({
         kind: 'exact',
-        path: PATHS.quarantine,
-        handler: async (req, res) => {
-          try {
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            if (req.method === 'GET') return json(res, 200, await listQuarantine({ home: HOME }))
-            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, POST' })
-            const body = await readJson(req)
-            const result = await restoreQuarantine({ home: HOME, batch: body.batch, name: body.name })
-            json(res, 200, result)
-          } catch (error) {
-            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
         path: PATHS.plan,
         handler: async (req, res) => {
           try {
@@ -338,24 +324,34 @@ function registerTools(ctx, api) {
       ctx.tools.register(defineTool({
         name: 'disk_canvas_claim',
         description:
-          '给某个路径写一条标注（判断 + 风险档 + 置信度），会覆盖该路径的规则推断并显示在画布上。仍然不执行任何删除。没有证据时 risk 用 unknown。',
+          '给某个路径写一条语义：它是什么（一句话）、属于哪一类、依据是什么。会覆盖该路径的旧语义并显示在画布上。' +
+          '仍然不执行任何删除。没有依据就写 evidence: [] 并把把握说低，不要用「安全」包装猜测。',
         parameters: {
           path: { type: 'string', required: true, description: '绝对路径' },
           claim: { type: 'string', required: true, description: '一句话判断：这是什么、删了会怎样' },
-          risk: { type: 'string', description: 'safe / caution / personal / high / unknown' },
+          label: { type: 'string', description: '短名字，例如「Xcode 编译中间产物」；画布上优先显示它' },
+          category: { type: 'string', description: '自定类别，例如「构建产物」「安装包」「录屏」；同一类用同一个词，画布据此聚合' },
+          evidence: { type: 'array', items: { type: 'string' }, description: '依据列表：读过什么文件、看到什么名字/时间，1–3 条足够' },
           confidence: { type: 'number', description: '0–1，表示对这条判断的把握' },
+          model: { type: 'string', description: '可省略；留空则由宿主记录' },
         },
         output: {
           schema: {
             type: 'object',
-            properties: { ok: { type: 'boolean' }, path: { type: 'string' }, claim: { type: 'string' }, risk: { type: 'string' } },
+            properties: {
+              ok: { type: 'boolean' },
+              path: { type: 'string' },
+              claim: { type: 'string' },
+              category: { type: 'string' },
+              state: { type: 'string' },
+            },
             additionalProperties: true,
           },
           render: (_args, value) => [{ type: 'text', text: `已标注 ${value.path}：${value.claim}` }],
         },
         execute: async (args) => {
           const saved = api.setClaim(args)
-          return { ok: true, path: args.path, claim: saved.claim, risk: saved.risk ?? 'unknown' }
+          return { ok: true, path: args.path, claim: saved.claim, category: saved.category ?? null }
         },
       })),
     ]

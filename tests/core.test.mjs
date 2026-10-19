@@ -1,32 +1,11 @@
-// 纯函数与前台的契约自证：规则、计划、批注覆盖、扫描体积。
+// 纯函数与前台的契约自证：计划、批注覆盖、扫描体积（语义见 semantics.test.mjs）。
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { classify } from '../lib/src/rules.mjs'
 import { createStore } from '../lib/src/store.mjs'
 import { scanChildren } from '../lib/src/scan.mjs'
-
-test('classify: 系统与个人目录是高危', () => {
-  assert.equal(classify('/System/Library', { isDir: true }).risk, 'high')
-  assert.equal(classify('/Users/me/Documents', { isDir: true }).risk, 'personal')
-  assert.equal(classify('/Users/me/Projects/app/src', { isDir: true }).risk, 'personal')
-})
-
-test('classify: 安全的可清理项', () => {
-  assert.equal(classify('/Users/me/.Trash', { isDir: true }).risk, 'safe')
-  assert.equal(classify('/Users/me/Library/Logs', { isDir: true }).risk, 'safe')
-  assert.equal(classify('/Users/me/x.log', { isDir: false }).risk, 'safe')
-})
-
-test('classify: 谨慎项与未知项', () => {
-  assert.equal(classify('/Users/me/Library/Caches', { isDir: true }).risk, 'caution')
-  assert.equal(classify('/Users/me/code/app/node_modules', { isDir: true }).risk, 'caution')
-  const unknown = classify('/Users/me/whatever', { isDir: true })
-  assert.equal(unknown.risk, 'unknown')
-  assert.equal(unknown.confidence, 0)
-})
 
 function scan(store, root, entries) {
   store.startScan(root)
@@ -101,14 +80,15 @@ test('store: 批量标注一次写多个路径，去重且忽略非法路径', (
   assert.throws(() => store.annotateMany({ paths: ['/tmp/m/a'], decision: 'rm' }), /decision must be one of/)
 })
 
-test('store: Agent 标注覆盖规则推断并标记来源', () => {
+test('store: Agent 语义覆盖规则空值并标记来源', () => {
   const store = createStore()
   scan(store, '/Users/me/Library', [{ path: '/Users/me/Library/Caches', name: 'Caches', kind: 'dir', bytes: 10, files: 1, latestModified: 1 }])
-  store.setClaim({ path: '/Users/me/Library/Caches', claim: '视频剪辑缓存，删了要重新渲染', risk: 'caution', confidence: 0.8 })
+  store.setClaim({ path: '/Users/me/Library/Caches', claim: '视频剪辑缓存，删了要重新渲染', category: '缓存', confidence: 0.8 })
   const entry = store.snapshot().entries[0]
   assert.equal(entry.source, 'agent')
   assert.equal(entry.claim, '视频剪辑缓存，删了要重新渲染')
-  assert.equal(entry.risk, 'caution')
+  assert.equal(entry.semantic.category, '缓存')
+  assert.equal(entry.semantic.state, 'fresh')
 })
 
 test('store: 非法决定被拒绝', () => {
@@ -242,7 +222,7 @@ test('store: 提案导入只补缺，不覆盖已有决定', () => {
       '/tmp/imp/c': { decision: 'delete' },
       bad: { decision: 'delete' },
     },
-    claims: { '/tmp/imp/b': { claim: '这是缓存', risk: 'caution', confidence: 0.8 } },
+    claims: { '/tmp/imp/b': { claim: '这是缓存', category: '缓存', confidence: 0.8 } },
     rules: [{ id: 'node_modules', decision: 'delete' }, { id: 'caches', decision: 'delete' }],
   })
   assert.equal(result.decisions, 2, '导入 b 和计划外的 c（a 已有人做过决定）')

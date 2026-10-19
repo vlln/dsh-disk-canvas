@@ -15,18 +15,24 @@
   "bytes": 482344960,                    // 递归体积
   "files": 18234,                        // 递归文件数
   "latestModified": 1750000000000,
-  "risk": "caution",                     // safe | caution | personal | high | unknown
-  "claim": "缓存：删除后应用会重建…",     // 一句话判断
-  "basis": "缓存规则",                    // 依据（规则名 / Agent 说明）
-  "confidence": 0.92,                    // 0–1，规则把握度，不是模型概率
-  "source": "rule",                      // rule | agent
+  "semantic": {                          // Agent 写的语义；没有就是 null（= 未标注，不是「安全」）
+    "label": "Xcode 编译中间产物",        // 短名字，画布上优先显示
+    "category": "构建产物",               // 开放词汇，画布据此聚成 facet
+    "claim": "删掉会重新编译，源码不受影响",
+    "evidence": ["目录里有 Build/Intermediates.noindex"],   // 读了什么，可核验
+    "by": "agent",                       // agent | human
+    "model": "…",                        // 可空
+    "at": 1792387357844,                 // 写这条语义的时间
+    "state": "fresh"                     // fresh | stale（对象变了）| orphan（找不到了）
+  },
   "partial": false                       // 该子项的遍历被预算截断
 }
 ```
 
-**面积 = 字节，颜色 = 风险，决定 = 边框**。三个通道互不复用，避免读者把「大」误读成「重要」。
+**面积 = 字节，高亮 = 你正在看的那一类，决定 = 标记**。三个通道互不复用，避免读者把「大」误读成「重要」。
 
-五档风险只表达「这类对象通常是什么、能不能动」：`safe` 可清、`caution` 需看一眼、`personal` 是你自己的内容、`high` 系统级、`unknown` 没证据。`personal` / `unknown` 不是「可删」。
+插件不判断「这是什么」：语义由 Agent 写入（`label` / `category` / `claim` / `evidence`），人可以覆盖；
+没有语义就是「未标注」，不是「安全」。颜色只用于高亮当前选中的 facet，不编码类别。
 
 ## 1.5 账本（持久）
 
@@ -45,12 +51,15 @@
     }
   },
   "annotations": { "/Users/me/Downloads/x.dmg": { "decision": "delete", "note": "…", "by": "human", "at": 0 } },
-  "claims": { "/Users/me/Library/Caches": { "claim": "…", "risk": "caution", "confidence": 0.9, "by": "agent", "at": 0 } }
+  "claims": { "/Users/me/Library/Caches": { "claim": "…", "label": "…", "category": "…", "evidence": ["…"], "by": "agent", "at": 0,
+                                              "m": { "kind": "d", "bytes": 482344960, "files": 18234, "day": 20347 } } }
 }
 ```
 
 - **扫描是持久周期**：账本跨进程/跨会话存在；启动时用 `latest` 秒开，不自动重扫。
 - **决定与标注是全局的**（按绝对路径），不随根目录或会话丢失；`by` 记录是人类还是 Agent 写的。
+- **`m` 是写语义时对象的样子**（体积/文件数/日期）：下一次扫描拿它比，判断这条语义还能不能复用。
+  目录按「≥25% 且 ≥1 MB（或 ≥50 个文件）」判变化，文件按体积或日期判——见 `lib/src/semantics.mjs`。
 - **历史只存顶层聚合**，不存整棵树；超限按「条数 → 时间 → 体积」裁剪。
 
 ## 2. 人的批注
@@ -137,21 +146,13 @@
 - 路径用单引号包裹并转义（`'` → `'\''`），带空格的路径安全；
 - 生成时跳过含换行的路径（不生成不可读的脚本）。
 
-## 2.9 隔离区
+## 2.9 执行台账
 
-清理脚本在 `$QUARANTINE/manifest.tsv` 里每条写一行：
+插件不维护隔离区。清理脚本只把待清理项 `mv` 到 `~/.Trash/`，自己不留清单。
 
-```
-001-node_modules	12400000000	/Users/me/Project/app/node_modules
-```
-
-列：`隔离后的名字 <TAB> 记录时的体积 <TAB> 原绝对路径`。
-
-- `GET /quarantine` 读出所有 `dsh-disk-canvas-*` 批次：`{ base, batches: [{ id, at, hasManifest, count, bytes, entries: [{ name, bytes, path, restorable }] }], count, bytes }`。
-  目录名的时间戳（`dsh-disk-canvas-YYYYMMDD-HHMMSS`）用来排序；没有 manifest 的批次照样列出来，但 `restorable: false`。
-- `POST /quarantine { batch, name }` 用 `rename` 移回原路径：目标已存在 → `target-exists`；
-  隔离区里的副本已经没了但原位置有 → `already`；跨磁盘（`EXDEV`）→ `cross-device`（不复制，让你手动处理）。
-- 插件只做 `mv`，不删除：清空废纸篓永远是你自己的动作。
+台账由插件自己推：上一次扫描里「你的决定是 `delete`」、这一次扫描里已不存在的路径，
+记成一条 `{ at, count, bytes, paths }`（每根目录保留最近 20 条）。它记录的是**「不在了」**，
+不区分是脚本移走的、你手动删的、还是被别的程序清掉的。恢复不在插件职责内。
 
 ## 3. 计划
 
@@ -175,8 +176,6 @@
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
-| GET | `/plugins/dsh-disk-canvas/quarantine` | 列出 `~/.Trash/dsh-disk-canvas-*` 批次（读 manifest） |
-| POST | `/plugins/dsh-disk-canvas/quarantine` | `{ batch }` 整批移回 / `{ batch, name }` 单项移回 |
 | GET | `/plugins/dsh-disk-canvas/proposal` | 提案快照（决定 + 判断 + 规则） |
 | POST | `/plugins/dsh-disk-canvas/proposal` | 导入提案：只补缺，返回 `{decisions, claims, rules, skipped}` |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
@@ -197,7 +196,7 @@ POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB
 |---|---|
 | `disk_canvas_scan` | 扫描目录并返回体积最大的若干项（只读） |
 | `disk_canvas_state` | 读当前画布：计划 + 条目 + 人的决定 |
-| `disk_canvas_claim` | 给某路径写标注（覆盖规则推断），**不执行删除** |
+| `disk_canvas_claim` | 给某路径写语义（覆盖旧语义），**不执行删除** |
 | `disk_canvas_history` | 读账本历史（最多 20 条）与最近一次增量 |
 
 这些工具都只在「磁盘整理」preset 内可见；该 preset 另外挂官方只读文件行：
@@ -209,4 +208,4 @@ POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB
 - 不删除、不移动、不压缩任何文件；
 - 不上传路径或文件清单，不发任何网络请求；
 - 不假装知道内容：没有证据的项是 `unknown`，不是「安全」；
-- 不自动把人的偏好变成风险等级（规则泛化需要显式清单，v0 还没做）。
+- 不自动把人的偏好变成语义（规则泛化需要显式清单，v0 还没做）。
