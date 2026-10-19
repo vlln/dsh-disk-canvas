@@ -104,6 +104,23 @@
 - 每组最多带 200 条明细（`shown`），`count` / `bytes` 始终按全部命中算。
 - 快照里只给摘要（无 `entries`），完整索引走 `/patterns`；索引随扫描重建，持久在账本里（只留最近一次）。
 
+## 2.7 记忆规则与自动扫描
+
+```jsonc
+{
+  "rules": [{ "id": "node_modules", "decision": "delete", "at": 1792397157264 }],
+  "config": { "autoScanHours": 168 }
+}
+```
+
+- **规则**按索引的分组 id 生效：每次扫描结束后，把「还没有任何标注」的同组目录补成规则里的决定，
+  标注带 `by: "rule"` 与 `rule: <groupId>`。人工改过的项不会被覆盖（规则只补空的）。
+- **撤销**规则会删掉规则本身，同时把 `by: "rule"` 且 `rule` 匹配、且没被改过的标注一起收回。
+- **自动扫描** `autoScanHours` ∈ [0, 720]，0 = 关；宿主进程用 `setInterval` 按间隔重扫上一次的根，
+  启动时若 `now - scannedAt` 超过间隔会补扫一次。dsh 不在运行就不会扫。
+- 导出计划里 `extra.{delete,keep,unsure}` 是「索引里、不在当前层」的那些决定，
+  避免批量标了 72 个 node_modules 却导不出来。
+
 ## 3. 计划
 
 ```jsonc
@@ -126,6 +143,7 @@
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
+| POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }`，返回完整快照 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。

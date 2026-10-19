@@ -57,6 +57,26 @@ export function apply(ctx, config) {
     return running
   }
 
+  /** 自动扫描：按记住的间隔重扫上一次的根；关掉就是普通手动模式。 */
+  let autoTimer = null
+  const scheduleAuto = () => {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null }
+    const hours = store.state.config?.autoScanHours ?? 0
+    if (!hours) return
+    autoTimer = setInterval(() => {
+      if (store.state.scanning) return
+      beginScan(store.state.root ?? HOME)
+    }, hours * 3600_000)
+    autoTimer.unref?.()
+  }
+  scheduleAuto()
+  ctx.effect(() => () => { if (autoTimer) clearInterval(autoTimer) }, 'disk-canvas: auto scan timer')
+  {
+    const hours = store.state.config?.autoScanHours ?? 0
+    const age = Date.now() - (store.state.scannedAt || 0)
+    if (hours > 0 && (!store.state.scannedAt || age > hours * 3600_000)) beginScan(store.state.root ?? HOME)
+  }
+
   /** 工具要完整结果：等当前扫描，必要时换根重扫。 */
   const scanAndWait = async (root) => {
     const target = root ?? store.state.root ?? HOME
@@ -160,6 +180,26 @@ export function apply(ctx, config) {
             json(res, 200, store.patterns())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.config,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const body = await readJson(req)
+            if (body.rememberRule) store.setRule({ id: body.rememberRule.id, decision: body.rememberRule.decision })
+            if (body.forgetRule) store.setRule({ id: body.forgetRule, decision: null })
+            if (body.autoScanHours !== undefined) {
+              store.setConfig({ autoScanHours: body.autoScanHours })
+              scheduleAuto()
+            }
+            json(res, 200, store.snapshot())
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }
         },
       }),

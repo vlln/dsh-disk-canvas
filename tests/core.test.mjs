@@ -178,6 +178,54 @@ test('store: 索引按类分组、去掉嵌套重复、带决定', () => {
   assert.equal(store.patterns().groups.find((g) => g.id === 'caches').entries[0].decision, 'delete')
 })
 
+test('store: 记忆规则自动标记新扫到的同类目录，且不覆盖人的决定', () => {
+  const store = createStore()
+  store.startScan('/tmp/rule')
+  store.addEntry({ path: '/tmp/rule/a', name: 'a', kind: 'dir', bytes: 10, files: 1, latestModified: 1 })
+  store.finishScan({ partial: false, scannedAt: 1, patternsTruncated: false, patterns: [
+    { path: '/tmp/rule/x/node_modules', name: 'node_modules', group: 'node_modules', bytes: 900, files: 9 },
+    { path: '/tmp/rule/y/node_modules', name: 'node_modules', group: 'node_modules', bytes: 400, files: 4 },
+  ] })
+  assert.equal(store.snapshot().plan.deleteCount, 0)
+
+  store.setRule({ id: 'node_modules', decision: 'delete' })
+  let snap = store.snapshot()
+  assert.equal(snap.annotations['/tmp/rule/x/node_modules'].decision, 'delete', '规则应立刻作用到已加载的索引')
+  assert.equal(snap.annotations['/tmp/rule/x/node_modules'].by, 'rule')
+  assert.equal(snap.rules.length, 1)
+  assert.equal(store.exportPlan().extra.counts.delete, 2, '导出要带上索引里的决定')
+
+  // 人工改成保留后，再扫描也不会被规则覆盖
+  store.annotate({ path: '/tmp/rule/x/node_modules', decision: 'keep' })
+  store.finishScan({ partial: false, scannedAt: 2, patternsTruncated: false, patterns: [
+    { path: '/tmp/rule/x/node_modules', name: 'node_modules', group: 'node_modules', bytes: 900, files: 9 },
+    { path: '/tmp/rule/y/node_modules', name: 'node_modules', group: 'node_modules', bytes: 400, files: 4 },
+    { path: '/tmp/rule/z/node_modules', name: 'node_modules', group: 'node_modules', bytes: 100, files: 1 },
+  ] })
+  snap = store.snapshot()
+  assert.equal(snap.annotations['/tmp/rule/x/node_modules'].decision, 'keep')
+  assert.equal(snap.annotations['/tmp/rule/z/node_modules'].decision, 'delete', '新扫到的项才补')
+
+  // 撤销规则：收回由它写下、且没被改过的决定
+  store.setRule({ id: 'node_modules', decision: null })
+  snap = store.snapshot()
+  assert.equal(snap.annotations['/tmp/rule/y/node_modules'], undefined)
+  assert.equal(snap.annotations['/tmp/rule/z/node_modules'], undefined)
+  assert.equal(snap.annotations['/tmp/rule/x/node_modules'].decision, 'keep')
+  assert.equal(snap.rules.length, 0)
+})
+
+test('store: 自动扫描间隔写入配置并夹在合理范围', () => {
+  const store = createStore()
+  assert.equal(store.snapshot().config.autoScanHours, 0)
+  store.setConfig({ autoScanHours: 24 })
+  assert.equal(store.snapshot().config.autoScanHours, 24)
+  store.setConfig({ autoScanHours: 99999 })
+  assert.equal(store.snapshot().config.autoScanHours, 720)
+  store.setConfig({ autoScanHours: -5 })
+  assert.equal(store.snapshot().config.autoScanHours, 0)
+})
+
 test('scan: 目录体积是递归求和', async () => {
   const root = await mkdtemp(join(tmpdir(), 'disk-canvas-'))
   try {
