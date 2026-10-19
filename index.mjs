@@ -19,6 +19,8 @@ export const name = 'dsh-disk-canvas'
 export const inject = ['tools', 'webServer']
 
 const HOME = process.env.HOME ?? '/'
+/** 工具输出必须是 lossless JSON：undefined 字段会被判成 invalid output（踩过）。 */
+const lossless = (value) => JSON.parse(JSON.stringify(value))
 const TOP_LIMIT = 30
 /** 扫描原因：只有 refresh / schedule / agent / boot 才算「测量」，navigate 不写历史。 */
 const SCAN_REASONS = new Set(['navigate', 'refresh', 'schedule', 'agent', 'boot'])
@@ -488,7 +490,7 @@ function registerTools(ctx, api) {
           const info = await stat(root)
           if (!info.isDirectory()) throw new Error('path is not a directory')
           await api.scanAndWait(root)
-          return api.summarize()
+          return lossless(api.summarize())
         },
       })),
       ctx.tools.register(defineTool({
@@ -509,7 +511,7 @@ function registerTools(ctx, api) {
         },
         execute: async () => {
           await api.scanAndWait()
-          return api.summarize(TOP_LIMIT)
+          return lossless(api.summarize(TOP_LIMIT))
         },
       })),
       ctx.tools.register(defineTool({
@@ -566,7 +568,7 @@ function registerTools(ctx, api) {
         },
         execute: async (args) => {
           const saved = api.markPaths(args)
-          return { ok: true, batch: saved.id, count: saved.count, skipped: saved.skipped, bytes: saved.bytes }
+          return lossless({ ok: true, batch: saved.id, count: saved.count, skipped: saved.skipped, bytes: saved.bytes })
         },
       })),
       ctx.tools.register(defineTool({
@@ -589,7 +591,7 @@ function registerTools(ctx, api) {
         },
         execute: async (args) => {
           const saved = api.setOperation({ paths: args.paths, to: args.destination, note: args.note, by: 'agent' })
-          return { ok: true, batch: saved.batch, count: saved.count }
+          return lossless({ ok: true, batch: saved.batch, count: saved.count })
         },
       })),
       ctx.tools.register(defineTool({
@@ -611,7 +613,7 @@ function registerTools(ctx, api) {
         },
         execute: async (args) => {
           const saved = api.setObjection(args)
-          return { ok: true, path: args.path, note: saved.note }
+          return lossless({ ok: true, path: args.path, note: saved.note })
         },
       })),
       ctx.tools.register(defineTool({
@@ -644,7 +646,7 @@ function registerTools(ctx, api) {
         },
         execute: async (args) => {
           const saved = api.setClaim(args)
-          return { ok: true, path: args.path, claim: saved.claim, category: saved.category ?? null }
+          return lossless({ ok: true, path: args.path, claim: saved.claim, category: saved.category ?? null })
         },
       })),
     ]

@@ -581,3 +581,17 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
 - 画布把会话的 preset 一起 bind；不是 disk-cleanup 时，冷启动提示改成「切到该模式后扫描一次即可」。
 
 验证：绑 standard → `auto.error = session preset is standard...`，不发；绑 disk-cleanup → 消息进会话日志。
+
+## 2026-10-19 · 1.10.3–1.10.5 三个把画布弄空/弄哑的 bug
+
+1. **点「磁盘画布」空白**：`preset` 变量在 `Page` 里定义、却在 `Rail` 里引用 → `ReferenceError`，
+   slot 直接崩（`slot entry crashed in 'conversation.view'`）。修：把 `preset` 作为 prop 传进 `Rail`。
+   这是同一类错误第三次（hasAgentMarks / labeled / preset）——单文件 client 改完必须真开一次页面。
+2. **自动补语义不触发**：见 1.10.1/1.10.2 两条（preset 门控 + 按 scannedAt 去重）。
+3. **Agent 调工具报 `value is not lossless JSON`**：`summarize()` 里 `claim / confidence / source`
+   在未标注项上是 `undefined`，工具输出校验拒绝 undefined。修：所有工具返回值过一遍
+   `JSON.parse(JSON.stringify(...))`（`lossless()`），并确认 `disk_canvas_state` 正常。
+
+端到端验证（真实会话、真实模型）：自动消息投递 → Agent 调 `state`（成功）→ 12 次 `disk_canvas_claim`
+→ 画布上 12/76 项有语义，类别如「项目仓库 / 实验数据 / 系统数据 / 构建产物」，`state=fresh`。
+Agent 自己也复述了「只写语义、没有替你做决定」。
