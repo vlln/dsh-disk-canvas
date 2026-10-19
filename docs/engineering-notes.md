@@ -493,3 +493,17 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
   截图 `.verify/dc-organize/`。
 - 测试 43 项（organize 5 项：正常/冲突/子目录/逐项/拒绝 `/`）。
 - 还没做：反向操作（账本已记 from→to，下一轮可以做「撤销这批移动」）；跨盘；rename/group/archive。
+
+
+## 2026-10-19 · 1.9.0 反向操作：撤销这批移动
+
+- 账本从「50 条流水」改成「批次」`moveBatches: [{id, at, items, count, bytes}]`（每根最近 10 批）——
+  撤销的单位是「一批」，才说得清「撤哪一次」。
+- `GET /organize/undo/preview?batch=` 复用 `previewMoves`，把 `from/to` 对调成 `to/dirname(from)`；
+  `POST /organize/undo` 复用 `executeMoves`；**全部成功才丢弃批次**，有失败就留着让人重试。
+- 坑：`executeMoves` 原来要求 `op === 'move'`，反向 ops 只有 `{path,to}` 会被判 `unsupported`。
+  改成「没有 op 就当 move」，并补了一条反向测试。
+- 顺手修：`setOperation` 没记 bytes，导致撤销批次里体积都是 0；现在登记时从当前层快照体积。
+- 验证：移动 big.zip → 计划条「已移动 1 项 · 撤销这批」→ 预览标题「撤销移动」1 行 →
+  执行 toast「已移回 1 项」，文件回到 `/private/tmp/dc-fixture/big.zip`，批次清空。截图 `.verify/dc-organize/`。
+- 测试 45 项（organize 7 项）。

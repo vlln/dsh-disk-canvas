@@ -68,3 +68,38 @@ test('execute: 目标写成 / 直接拒绝', async () => {
     assert.equal(res.reason, 'bad-target')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('store: 执行成功后记成一批，可查询、可丢弃', async () => {
+  const { createStore } = await import('../lib/src/store.mjs')
+  const root = '/tmp/dc-org-root'
+  const store = createStore()
+  store.startScan(root)
+  store.addEntry({ path: `${root}/a.txt`, name: 'a.txt', kind: 'file', bytes: 10, files: 1, latestModified: Date.now() })
+  store.finishScan({ partial: false, scannedAt: Date.now(), reason: 'refresh', patterns: [], patternsTruncated: false })
+
+  store.setOperation({ paths: [`${root}/a.txt`], to: '/tmp/dc-org-dst' })
+  assert.equal(store.snapshot().plan.moveCount, 1)
+  store.finishMoves({ results: [{ ok: true, from: `${root}/a.txt`, dest: '/tmp/dc-org-dst/a.txt' }] })
+
+  const snap = store.snapshot()
+  assert.equal(snap.plan.moveCount, 0)
+  assert.equal(snap.operations[`${root}/a.txt`], undefined)
+  assert.equal(snap.moveBatches.length, 1)
+  const batch = store.moveBatch()
+  assert.deepEqual(batch.items[0], { from: `${root}/a.txt`, to: '/tmp/dc-org-dst/a.txt', bytes: 10 })
+
+  store.dropMoveBatch(batch.id)
+  assert.equal(store.snapshot().moveBatches.length, 0)
+})
+
+test('executeMoves: 反向操作（只有 path/to、没有 op）也能执行', async () => {
+  const root = await sandbox()
+  try {
+    // 先正向移动
+    await executeMove(join(root, 'src', 'a.txt'), join(root, 'dst'))
+    // 再反向：从 dst 移回 src
+    const res = await executeMoves([{ path: join(root, 'dst', 'a.txt'), to: join(root, 'src') }])
+    assert.equal(res[0].ok, true)
+    assert.equal((await stat(join(root, 'src', 'a.txt'))).isFile(), true)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

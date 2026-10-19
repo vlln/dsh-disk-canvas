@@ -4,7 +4,7 @@
 //   mode=tools —— preset 子行，只注册 disk_canvas_* 工具，工具只对该 preset 的 Agent 可见。
 // v0 不提供任何删除或移动动作——执行面在确认清单之后，且本版本刻意留空。
 import { stat } from 'node:fs/promises'
-import { isAbsolute } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { scanChildren } from './lib/src/scan.mjs'
 import { createStore } from './lib/src/store.mjs'
@@ -309,6 +309,38 @@ export function apply(ctx, config) {
             json(res, 200, { moved, results, state: store.snapshot() })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.organizeUndoPreview,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
+            const batch = store.moveBatch(new URL(req.url ?? '/', 'http://localhost').searchParams.get('batch') ?? undefined)
+            const ops = batch.items.map((it) => ({ path: it.to, to: dirname(it.from) }))
+            json(res, 200, { batch: batch.id, rows: await previewMoves(ops) })
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.organizeUndo,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const body = await readJson(req)
+            const batch = store.moveBatch(body.batch)
+            const ops = batch.items.map((it) => ({ path: it.to, to: dirname(it.from) }))
+            const results = await executeMoves(ops)
+            if (results.length > 0 && results.every((r) => r.ok)) store.dropMoveBatch(batch.id)
+            json(res, 200, { batch: batch.id, results, state: store.snapshot() })
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }
         },
       }),
