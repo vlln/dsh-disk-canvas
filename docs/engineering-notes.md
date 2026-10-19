@@ -436,3 +436,19 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
 
 隔离站实测：seed 一份两档提案 → `GET /state` 的 `proposals` 有 2 档（1 项/300 KB、3 项/620 KB）；
 `POST /apply {p-demo, deep}` → `applied 2, skipped 1`，人标了 `keep` 的 `old.dmg` 没被覆盖。
+
+
+## 2026-10-19 · 1.5.0 提案改成「直接标」（推翻 1.4.0 的分档对象）
+
+用户的模型：Agent 提出提案就直接改画布——某些块变成待删除，和用户操作完全相同。
+所以 1.4.0 的「提案对象 + 档位按钮 + /apply」整块删掉，换成：
+
+- `store.markPaths({paths, decision, note})`：写的是**同一份 `annotations`**，带 `by: agent` 与 `batch`。
+  画布、计划统计、✕/✓/? 标记全部和人工操作一致，没有第二种视觉。
+- 只补「还没有决定」的项（人标过的 `skipped`），符合「产线不能覆盖人的判断」。
+- `store.undoAgentBatch({batch})`：只删 `by=agent && batch=id`；人后来改过的那条 `by` 已变 human，留下。
+- 工具 `disk_canvas_mark` 取代 `disk_canvas_propose`；`POST /undo` 取代 `/apply`。
+- UI：计划条出现「Agent 标了 N 项 · 撤销这一批」；检查器里多一行「Agent 标的」（只是解释，不换颜色）。
+- 「提案快照」改名「审查快照」，避开「提案」一词的两种含义。
+
+测试 35 项（`mark.test.mjs` 4 项：同构写入与计划统计、跳过人的决定、撤销只撤本批、非法输入）。

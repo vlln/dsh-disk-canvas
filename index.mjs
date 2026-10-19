@@ -154,7 +154,7 @@ export function apply(ctx, config) {
     root: () => store.state.root ?? HOME,
     history: (root, limit) => ledger.history(root ?? store.state.root ?? HOME, limit),
     setClaim: (args) => store.setClaim(args),
-    setProposal: (args) => store.setProposal(args),
+    markPaths: (args) => store.markPaths(args),
   }), 'disk-canvas: api service')
 
   ctx.effect(() => {
@@ -261,13 +261,13 @@ export function apply(ctx, config) {
       }),
       ctx.webServer.register({
         kind: 'exact',
-        path: PATHS.apply,
+        path: PATHS.undo,
         handler: async (req, res) => {
           try {
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
             if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
             const body = await readJson(req)
-            const result = store.applyProposal({ proposalId: body.proposalId, tierId: body.tierId })
+            const result = store.undoAgentBatch({ batch: body.batch })
             json(res, 200, { ...result, state: store.snapshot() })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
@@ -372,52 +372,35 @@ function registerTools(ctx, api) {
         },
       })),
       ctx.tools.register(defineTool({
-        name: 'disk_canvas_propose',
+        name: 'disk_canvas_mark',
         description:
-          '提交一份分档清理提案（2–3 档）：每档给出路径、一句话理由和「误判的代价」。' +
-          '提案本身不改变任何决定——应用哪一档是用户点的事，你只负责把选项摆清楚。',
+          '直接给一批路径写决定（delete / keep / unsure），和用户按 K/D/U 写的是同一份数据，画布会立刻变成同样的样子。' +
+          '只补「还没有决定」的项：用户标过的不覆盖。每批可整批撤销。不要替用户做最终选择——只标你有把握的。',
         parameters: {
-          tiers: {
-            type: 'array',
-            description: '2–3 档，按「保守 → 激进」排序',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string', description: '短 id，例如 safe / standard / deep' },
-                name: { type: 'string', description: '给用户看的档名，例如「只清构建产物」' },
-                paths: { type: 'array', items: { type: 'string' }, description: '这一档包含的绝对路径（≤500）' },
-                rationale: { type: 'string', description: '为什么这些可以清' },
-                regret: { type: 'string', description: '误判时的代价：能重装吗、能找回吗' },
-              },
-              required: ['name', 'paths'],
-              additionalProperties: false,
-            },
-          },
-          note: { type: 'string', description: '整份提案的一句话说明' },
-          model: { type: 'string', description: '可省略' },
+          paths: { type: 'array', items: { type: 'string' }, description: '绝对路径，≤500 个' },
+          decision: { type: 'string', required: true, description: 'delete | keep | unsure' },
+          note: { type: 'string', description: '一句话理由，会显示在批注里' },
         },
         output: {
           schema: {
             type: 'object',
             properties: {
               ok: { type: 'boolean' },
-              id: { type: 'string' },
-              tiers: { type: 'array', items: { type: 'object', additionalProperties: true } },
+              batch: { type: 'string' },
+              count: { type: 'number' },
+              skipped: { type: 'number' },
+              bytes: { type: 'number' },
             },
             additionalProperties: true,
           },
           render: (_args, value) => [{
             type: 'text',
-            text: `提案 ${value.id}：${value.tiers.map((t) => `${t.name}（${t.count} 项 / ${t.bytes} B）`).join(' · ')}`,
+            text: `已标 ${value.count} 项（跳过 ${value.skipped} 项已有决定的）· ${value.bytes} B · 批次 ${value.batch}`,
           }],
         },
         execute: async (args) => {
-          const saved = api.setProposal(args)
-          return {
-            ok: true,
-            id: saved.id,
-            tiers: saved.tiers.map((t) => ({ id: t.id, name: t.name, count: t.paths.length, bytes: t.bytes })),
-          }
+          const saved = api.markPaths(args)
+          return { ok: true, batch: saved.id, count: saved.count, skipped: saved.skipped, bytes: saved.bytes }
         },
       })),
       ctx.tools.register(defineTool({

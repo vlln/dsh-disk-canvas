@@ -165,7 +165,7 @@ dsh plugin --profile web add github:vlln/dsh-disk-canvas
 | 工具 | 说明 |
 |---|---|
 | `disk_canvas_scan` | 扫描一个目录（默认主目录）的直接子项，返回体积最大的若干项与规则标注 |
-| `disk_canvas_propose` | 提交 2–3 档提案（路径 + 理由 + 误判代价）；不改变任何决定 |
+| `disk_canvas_mark` | 直接给一批路径写决定（和用户按 K/D/U 同一份数据）；只补没决定的，可整批撤销 |
 | `disk_canvas_state` | 读当前画布状态：计划、条目、你的决定 |
 | `disk_canvas_claim` | 给某路径写一条语义（一句话 + 类别 + 依据），不执行删除 |
 | `disk_canvas_history` | 读账本里的历史扫描与增量（最多 20 条） |

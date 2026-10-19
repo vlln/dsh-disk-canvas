@@ -162,28 +162,22 @@
 记成一条 `{ at, count, bytes, paths }`（每根目录保留最近 20 条）。它记录的是**「不在了」**，
 不区分是脚本移走的、你手动删的、还是被别的程序清掉的。恢复不在插件职责内。
 
-## 2.11 分档提案
+## 2.11 Agent 标注（与人的决定同构）
 
-Agent 可以提交一份提案（`disk_canvas_propose`），形状：
+Agent 通过 `disk_canvas_mark` 写决定，落到的就是人的那份 `annotations`——同样的 `decision`、
+同样的计划统计、同样的 ✕/✓/? 标记。区别只在数据里多了两个字段：
 
 ```jsonc
-{
-  "id": "p1a2b3c",
-  "at": 1792411503270,
-  "root": "/Users/me",
-  "model": "…",
-  "note": "先给两档：只清构建产物 / 连缓存一起",
-  "tiers": [
-    { "id": "safe", "name": "只清构建产物", "paths": ["/Users/me/app/.next"], "bytes": 12400000000,
-      "rationale": "可由 build 重建", "regret": "重新编译一次" }
-  ]
-}
+{ "decision": "delete", "note": "构建产物，可重建", "by": "agent", "batch": "a1k2j3", "at": 0 }
 ```
 
-- 每根目录保留最近 10 份；`state.proposals` 返回最近 3 份。
-- **提案不改任何决定**：`POST /apply` 才把某一档的路径标成 `delete`，而且只标「还没有决定」的项——
-  人标过的保留/待清理/待复查不会被覆盖（会被跳过并计入 `skipped`）。
-- 提案是「选项」，不是「结论」：Agent 只负责把 2–3 档摆清楚，选哪一档永远是人。
+- **只补「还没有决定」的项**：人标过的（保留 / 待清理 / 待复查）跳过并计入 `skipped`。
+- **可整批撤销**：`POST /undo { batch }` 只删 `by=agent && batch=id` 的批注；人后来改过的那条
+  `by` 已经变回 `human`，不会被撤销。
+- `state.agentBatches` 返回最近 3 批 `{id, at, decision, count, skipped, bytes}`，画布用它显示
+  「Agent 标了 N 项 · 撤销这一批」。
+- 视觉上和人的标注**完全一致**：画布不会用另一种颜色标「这是 AI 标的」。来源只在检查器里
+  写一行「Agent 标的」，用途是事后能解释，不是事前吓人。
 
 ## 3. 计划
 
