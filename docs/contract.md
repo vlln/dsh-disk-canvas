@@ -192,6 +192,22 @@ Agent 可以对「人已经做过的决定」写一句异议：
 - 不能对 Agent 自己的标注提异议（那只是它的建议，不需要反对自己）。
 - 这是产品 §1 规则 4 的落地：Agent 可以不同意，但必须服从并写明异议。
 
+## 2.13 整理：移动
+
+与 `annotations` 平行的 `operations`：
+
+```jsonc
+{ "/Users/me/Downloads/setup.dmg": { "op": "move", "to": "/Users/me/Archive/Installers",
+  "note": "装完了", "by": "human", "batch": "o1a2b3", "at": 0 } }
+```
+
+- `to` 是**目录**，文件名不变；同一个对象标了移动就清掉它的 `delete`（意图替代）。
+- `POST /organize { paths, to, note }` 登记；`GET /organize/preview` 用只读 `stat` 预演；
+  `POST /organize/execute` 才真的移动。
+- **别名保护**（逐项检查，单项失败不影响其它项）：目标已存在 → 跳过；跨盘 → 跳过；
+  目标在源里 → 跳过；源不存在 → 跳过；目标不是目录 → 跳过。成功项写进账本 `moves`（from/to/at/bytes）。
+- 只有 `move` 一种 op。rename / group / archive 见 `annotation-canvas/ORGANIZE.md` 的 v2。
+
 ## 3. 计划
 
 ```jsonc

@@ -475,3 +475,21 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
   节点已经换了。改成等 80ms、重新查询一次编辑器再校验，才返回 `filled`。
 - 验证：点按钮后 composer 内容 = 提示词全文，toast「已填进对话框，按 Enter 发送」；无 console error。
   截图 `.verify/dc-mark/zh-1440-ask.png`。
+
+
+## 2026-10-19 · 1.8.0 整理 v1：移动（第一次有执行面）
+
+- 新增 `lib/src/organize.mjs`：`previewMove` / `executeMove` / `previewMoves` / `executeMoves`。
+  护栏全在这里：目标绝对路径、拒绝 `/`、目标已存在跳过、跨盘跳过（比较 `stat.dev`）、
+  目标在源内部跳过、目标不是目录跳过；逐项执行，单项失败不影响其它项。
+- 账本 `operations`（按路径）+ `moves`（每根目录最近 50 条 from→to）。
+- store：`setOperation`（写 op、清同路径的 delete）、`clearOperations`、`finishMoves`（成功后清 op、记 moves）；
+  `plan()` 增加 `moveCount/moveBytes`。
+- 路由：`POST /organize`、`GET /organize/preview`、`POST /organize/execute`；工具 `disk_canvas_organize` 只登记。
+- UI：批量条「移到…」（记住上次目标）、方块 `→ 目录` 角标、计划条「待移动 N 项 · X GB」+「整理预览」弹层、
+  执行后 toast。
+- 验证：登记 old.dmg → 角标 `→ dc-archive`、计划条「待移动 1 项 · 195 KB」；预览 1 行；
+  执行 → toast「已移动 1 项，跳过 0 项」，文件真的到了 `/private/tmp/dc-archive/old.dmg`，角标消失。
+  截图 `.verify/dc-organize/`。
+- 测试 43 项（organize 5 项：正常/冲突/子目录/逐项/拒绝 `/`）。
+- 还没做：反向操作（账本已记 from→to，下一轮可以做「撤销这批移动」）；跨盘；rename/group/archive。
