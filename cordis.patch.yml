@@ -1,0 +1,6 @@
+# dsh-disk-canvas bundle patch：把画布挂进 web 组合。
+# Node half 负责扫描、规则标注与提案状态（webServer 只读路由 + 三个工具），
+# client half 由 __ModuleLoader__ 内核挂载，渲染侧边栏「磁盘画布」页。
+- insert:
+    - id: dsh-disk-canvas
+      name: dsh-disk-canvas

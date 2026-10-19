@@ -1,0 +1,47 @@
+{
+  "name": "dsh-disk-canvas",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "把磁盘扫成一张可批注的提案：Agent 标注、你来决定、删前可预览（DeepSeek Harness 插件）",
+  "main": "./index.mjs",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    },
+    "manifestVersion": 1
+  },
+  "files": [
+    "index.mjs",
+    "lib/client.js",
+    "lib/src",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "disk",
+    "cleanup",
+    "treemap",
+    "annotation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vlln/dsh-disk-canvas.git"
+  }
+}
