@@ -28,6 +28,31 @@
 
 五档风险只表达「这类对象通常是什么、能不能动」：`safe` 可清、`caution` 需看一眼、`personal` 是你自己的内容、`high` 系统级、`unknown` 没证据。`personal` / `unknown` 不是「可删」。
 
+## 1.5 账本（持久）
+
+扫描快照、决定、标注都存在 `$DSH_HOME/data/dsh-disk-canvas/ledger.json`（原子写，debounce 800ms，
+进程退出前 flush）。形状：
+
+```jsonc
+{
+  "version": 1,
+  "roots": {
+    "/Users/me": {
+      "scans": [                       // 最多 20 条，90 天，全局 ≤5 MB
+        { "at": 1792387357844, "totalBytes": 146000000000, "partial": false,
+          "entries": [{ "path": "…", "name": "…", "kind": "dir", "bytes": 0, "files": 0, "partial": false }] }
+      ]
+    }
+  },
+  "annotations": { "/Users/me/Downloads/x.dmg": { "decision": "delete", "note": "…", "by": "human", "at": 0 } },
+  "claims": { "/Users/me/Library/Caches": { "claim": "…", "risk": "caution", "confidence": 0.9, "by": "agent", "at": 0 } }
+}
+```
+
+- **扫描是持久周期**：账本跨进程/跨会话存在；启动时用 `latest` 秒开，不自动重扫。
+- **决定与标注是全局的**（按绝对路径），不随根目录或会话丢失；`by` 记录是人类还是 Agent 写的。
+- **历史只存顶层聚合**，不存整棵树；超限按「条数 → 时间 → 体积」裁剪。
+
 ## 2. 人的批注
 
 ```jsonc
@@ -89,8 +114,11 @@ POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB
 | `disk_canvas_scan` | 扫描目录并返回体积最大的若干项（只读） |
 | `disk_canvas_state` | 读当前画布：计划 + 条目 + 人的决定 |
 | `disk_canvas_claim` | 给某路径写标注（覆盖规则推断），**不执行删除** |
+| `disk_canvas_history` | 读账本历史（最多 20 条）与最近一次增量 |
 
-三个工具都只在「磁盘整理」preset 内可见。
+这些工具都只在「磁盘整理」preset 内可见；该 preset 另外挂官方只读文件行：
+`@deepseek-ai/dsh-tool-fs`（`write:false` / `edit:false`，留 read / read_image）与
+`@deepseek-ai/dsh-tool-fs-search`（glob / grep）。没有 shell、没有写/删工具。
 
 ## 7. 不做（v0 明确边界）
 

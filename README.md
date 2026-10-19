@@ -41,6 +41,29 @@ dsh plugin --profile web add github:vlln/dsh-disk-canvas
 | 点「预览清理后」 | 隐藏待清理块，看剩下的结构；**磁盘没有任何改动** |
 | 点「导出计划」 | 一份 JSON：待清理清单、预计释放、你写的批注 |
 
+### 键盘
+
+| 键 | 动作 |
+|---|---|
+| 空格 | 循环标记：无 → 待清理 → 保留 → 待复查 → 无 |
+| K / D / U | 直接标：保留 / 待清理 / 待复查 |
+| Enter | 进入选中的目录 |
+| Esc | 返回上层 |
+
+标记会改变方块本身：待清理是红色斜纹 + ✕，保留是绿框 + ✓，待复查是黄虚线 + ?；hover 有信息卡，
+左上角路径的每一段都可以点。
+
+## 持久化与历史
+
+扫描快照、你的决定、Agent 的标注都写在 `$DSH_HOME/data/dsh-disk-canvas/ledger.json`：
+
+- 每根目录保留**最近 20 次扫描 / 90 天 / 总量 ≤ 5 MB**（只存顶层聚合，不存整棵树）；
+- 重启 dsh 后画布用上次快照**秒开**，不会先重扫；点「重新扫描」才更新；
+- 标注按路径全局保留，换目录、换会话、重启都还在；
+- `disk_canvas_history` 让 Agent 读历史与增量（"这周哪个目录在涨"）。
+
+扫描是插件的持久周期，会话只是某次审查；关掉会话不影响账本。
+
 ## 能力面
 
 **Preset**
@@ -56,6 +79,10 @@ dsh plugin --profile web add github:vlln/dsh-disk-canvas
 | `disk_canvas_scan` | 扫描一个目录（默认主目录）的直接子项，返回体积最大的若干项与规则标注 |
 | `disk_canvas_state` | 读当前画布状态：计划、条目、你的决定 |
 | `disk_canvas_claim` | 给某路径写一条判断（风险档 + 把握度），不执行删除 |
+| `disk_canvas_history` | 读账本里的历史扫描与增量（最多 20 条） |
+
+preset 里还有官方只读文件工具：`read` / `read_image`（`dsh-tool-fs` 关掉 write/edit）、
+`glob` / `grep`（`dsh-tool-fs-search`）。**没有 shell、没有写/删工具**。
 
 ## 安全与数据
 
@@ -74,6 +101,8 @@ dsh plugin --profile web add github:vlln/dsh-disk-canvas
 - 规则推断基于路径与时间，不是文件内容；对未知目录保持沉默。
 - 五档风险里 `personal`（个人内容）与 `unknown` 只是分类，不是「可删」；只有你标记的才算决定。
 - 不提供回收站 / 隔离区 / 撤销——因为它们属于执行面，v0 刻意没有执行面。
+- 历史只保留顶层聚合；要看更早的变化需要在账本上限内重扫。
+- 批量框选、缩放动画还没做（下一轮）。
 
 ## 兼容性
 

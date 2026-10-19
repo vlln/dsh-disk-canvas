@@ -54,11 +54,26 @@
   画布底色改 layer-2、方块加 1px 分隔、加五色图例；修正字号/对比与「1 items」单复数。
   因实例没有模型凭据，无法创建非空白会话，页签内画布的最终视觉仍需人工看一眼（见下）。
 
+### 2026-10-18 第三轮（账本 / UX / preset 只读工具）
+
+- **持久化**：新增 `lib/src/ledger.mjs`，`$DSH_HOME/data/dsh-disk-canvas/ledger.json`，原子写、
+  800ms debounce、退出 flush；每根目录 20 条 / 90 天 / ≤5MB，只存顶层聚合；标注与 claims 全局
+  （按绝对路径），`by: human|agent`。启动时 `ledger.latest(HOME)` → `store.hydrate`，画布秒开。
+  实测：扫描 76 项 → 账本 8346 B；标 `/Users/vlln/Project` 为 keep → 账本出现 annotations；
+  **重启进程后** `GET /state` 直接返回扫描时间不变的 76 项 + keep=1，没有触发重扫。
+- **UX**：面包屑可点、hover 信息卡（240ms 延迟）、键盘（空格循环 / K/D/U / Enter / Esc）、
+  标记视觉（斜纹 + ✕ / 绿框 + ✓ / 黄虚线 + ?）、较上次增量 chip 与方块涨跌角标。
+- **preset 工具**：加官方只读行 `dsh-tool-fs`（write/edit=false）与 `dsh-tool-fs-search`；
+  查询确认 `ctx.fs` 的 workspace 限制只作用于**写/改**，读不受限（fs-sandbox README：
+  "preserving the local filesystem's read behavior" / "Reads … work exactly as with fs-local"），
+  因此不需要自造磁盘检查工具。
+- 测试 13 项全过（新增 ledger 4 项：裁剪 / 增量 / 跨实例持久 / store 接线）。
+
 ### 未完成
 
 - 真实会话里让模型调一次 `disk_canvas_scan` / `disk_canvas_claim`（需要模型凭据与一次对话）。
 - Plugins 页里的插件图标视觉验收。
-- 页签内画布在非空白会话里的视觉验收（本机实例无模型凭据，无法造出会话；需在有凭据的实例里看一眼）。
+- 页签内画布在非空白会话里的视觉验收（本机实例无模型凭据；需在有凭据的实例里看一眼）。
 - 真实会话里验证「磁盘整理」preset 只挂 `disk_canvas_*` 工具。
 
 ## 开发循环（本地）

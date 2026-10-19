@@ -8,6 +8,7 @@ import { isAbsolute } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { scanChildren } from './lib/src/scan.mjs'
 import { createStore } from './lib/src/store.mjs'
+import { createLedger } from './lib/src/ledger.mjs'
 import { PATHS } from './lib/src/routes.mjs'
 import { json, readJson, isCrossOrigin } from './lib/src/http.mjs'
 
@@ -28,7 +29,10 @@ export function apply(ctx, config) {
     return
   }
 
-  const store = createStore()
+  const ledger = createLedger()
+  const store = createStore({ ledger })
+  store.hydrate(ledger.latest(HOME))
+  ctx.effect(() => () => ledger.flush(), 'disk-canvas: ledger flush')
   let running = null
   let queued = null
 
@@ -65,6 +69,8 @@ export function apply(ctx, config) {
       scannedAt: snap.scannedAt,
       totalBytes: snap.entries.reduce((n, e) => n + (e.bytes || 0), 0),
       plan: snap.plan,
+      since: snap.delta,
+      history: snap.history,
       entries: snap.entries.slice(0, limit).map((e) => ({
         path: e.path,
         kind: e.kind,
@@ -75,6 +81,7 @@ export function apply(ctx, config) {
         confidence: e.confidence,
         source: e.source,
         decision: snap.annotations[e.path]?.decision ?? null,
+        deltaBytes: e.deltaBytes ?? null,
       })),
     }
   }
@@ -83,6 +90,8 @@ export function apply(ctx, config) {
   ctx.effect(() => ctx.provide('dsh-disk-canvas.api', {
     scanAndWait,
     summarize,
+    root: () => store.state.root ?? HOME,
+    history: (root, limit) => ledger.history(root ?? store.state.root ?? HOME, limit),
     setClaim: (args) => store.setClaim(args),
   }), 'disk-canvas: api service')
 
@@ -205,6 +214,31 @@ function registerTools(ctx, api) {
         execute: async () => {
           await api.scanAndWait()
           return api.summarize(TOP_LIMIT)
+        },
+      })),
+      ctx.tools.register(defineTool({
+        name: 'disk_canvas_history',
+        description: '读磁盘账本的历史扫描（默认当前根，最多 20 条）：每次扫描的总容量、是否部分结果、以及最早/最近的时间。用于回答“最近哪个目录在涨”。',
+        parameters: {
+          root: { type: 'string', description: '绝对路径；省略则用当前根' },
+          limit: { type: 'number', description: '最多返回几条，默认 10' },
+        },
+        output: {
+          schema: {
+            type: 'object',
+            properties: {
+              root: { type: 'string' },
+              scans: { type: 'array', items: { type: 'object', additionalProperties: true } },
+              since: { type: 'object', additionalProperties: true },
+            },
+            additionalProperties: true,
+          },
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        execute: async (args) => {
+          const root = args.root ?? api.root?.() ?? process.env.HOME ?? '/'
+          const scans = api.history(root, Math.min(20, Math.max(1, args.limit ?? 10)))
+          return { root, scans, since: scans.length >= 2 ? { previousAt: scans.at(-2).at, totalDelta: scans.at(-1).totalBytes - scans.at(-2).totalBytes } : null }
         },
       })),
       ctx.tools.register(defineTool({

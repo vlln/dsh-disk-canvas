@@ -24,7 +24,15 @@
                 你也没有这类工具；(2) 没有证据就说不知道，risk 用 unknown，不要用「安全」包装猜测；
                 (3) 每条判断都要能被验证——说明它是什么、删了会怎样、依据是什么；(4) 用户的批注优先于你的
                 判断，用户标了保留就不要继续建议删除；(5) 只扫描用户要求的范围，不遍历无关目录；
-                (6) 回复用用户的语言，简洁，不重复画布里已经写明的信息。
+                (6) 你有 read / glob / grep 这类只读文件工具，可以用来确认“这个文件是什么”；没有 shell、
+                没有写/删工具，也不要试图绕过；(7) 回复用用户的语言，简洁，不重复画布里已经写明的信息。
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              write: false
+              edit: false
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
           - id: disk-canvas-tools
             name: dsh-disk-canvas
             config:
