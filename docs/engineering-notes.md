@@ -319,13 +319,32 @@ DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_stor
 - 客户端 bundle：从 `__DSH_BOOT__` 取 `plugins/??dsh-disk-canvas/client.js&rev=…` → 200 / 128 KB，
   含 `dc-facet`、`labeledNote`、`semantic` 标记，说明新代码真的进了 bundle（不是旧包）。
 
-### 卡住的地方（下轮别重复踩）
+### 浏览器视觉验收（同一轮补上）
 
-- **浏览器里的画布仍未做完整视觉验收**：这个环境没有可用的模型凭据，而会话页签只在真实会话里出现。
-  试过：`dsh headless` 用假 key 会在鉴权失败前先落一个会话（`sessions/--tmp-dc-fixture--/`），
-  但 web 侧边栏不从磁盘反扫会话，只认 `storages/workspace.json` 里 `tables.workspaces[].sessionIds`；
-  手工把 session id 填进去、重启后侧边栏仍不显示（另有 session 索引/投影层没被填充）。
-  下次要么用真实凭据发一条消息，要么先弄清会话索引的写入路径（`session_projcache` 之类），
-  不要再从「选择工作区 → 菜单项」这条 UI 路径硬点。
+隔离站里没有模型凭据，画布页签又只在真实会话里出现；最后走通的路是：
+
+1. 造一个工作区：`storages/workspace.json` 的 `tables.workspaces` 里加一条。
+   **路径必须是 realpath**：`/tmp/xxx` 在 macOS 上是 `/private/tmp/xxx` 的符号链接，
+   写成 `/tmp/...` 会让 `session/create` 报 `workspace-attach-failed`（its cwd resolves to '/private/tmp/...'）。
+2. 打开 UI →「选择工作区」→ 选它：`session/create` 成功，会话自动建好，composer 出现。
+3. 发一条消息（模型会因假 key 失败，但会话已经落盘、页签已经渲染）：对话 / 轨迹 / 磁盘画布。
+4. 为了让 facet 有内容，直接往账本写 4 条 `claims`（含 `m` 快照），重启宿主；
+   其中一条故意把 `m.bytes` 改大，用来验「对象已变化」。
+5. 截图脚本：`.verify/dc-semantics/`（zh-1440 / en-1440 / zh-900 / zh-390 / facet / inspector / stale）。
+
+结果：1440 与 900 无横向溢出；facet 点击后 2 个非该类方块降饱和；检查器显示
+「类别 / Agent 标注 / 一句话 / 标签 / 依据 / 标注于」；过期项带琥珀「对象已变化」；
+en 界面里 facet 仍是 Agent 写的中文词（预期：分类词是内容，不翻译）。
+控制台无 error。
+
+### 记一笔 390 的行为
+
+390 宽时右侧检查器（`padding-right:308px`）把画布挤到近 0，总览里出现「4 项小于 1 像素」。
+列表仍可用，但这句提示在移动宽度下是误导。下一轮候选：容器宽度 < 560 时让检查器变成抽屉/覆盖层，
+而不是挤画布——属于窄屏交互债，与本次语义改造无关。
+
+### 其他坑
+
 - `npm pack` 在本机因 `~/.npm` 属主是 root 会失败：用 `npm_config_cache=/tmp/dc-npm-cache npm pack`。
 - 同版本重装必须 `remove` + `add`；本次换了版本号所以直接 `add` 生效。
+- 会话侧边栏只认 `workspace.json` 的 `sessionIds` + `session_projcache`；手工往 sessions 目录塞文件不会被列出来。
