@@ -375,3 +375,17 @@ en 界面里 facet 仍是 Agent 写的中文词（预期：分类词是内容，
   6 个方块的 `background-color` 计算值分别为白 / 淡蓝 / 淡青 / 淡绿，色条与 chip 色块一致；
   选中「个人内容」后其余 4 块灰度；900 宽无横向溢出；控制台无 error。
 - 未验证：暗色主题。当前色板按浅色背景调的（8% 混白），换深色底需要再调一次强度。
+
+
+## 2026-10-19 · 1.2.0 扫描原因与缓存优先
+
+- `POST /scan` 增加 `reason`（navigate / refresh / schedule / agent / boot）。只有后四种调用
+  `store.finishScan` 的「测量」分支：写 `appendScan`、算 delta、推进执行台账；`navigate` 只更新画面。
+- **缓存优先**：`openRoot()` 在 `navigate` 时先 `ledger.latest(root)` 秒开（`fromCache: true`），
+  超过 10 分钟才在后台重扫；后台重扫用 `startScan(root, { keep: true })`，新结果先进 `pendingEntries`，
+  扫完一次替换——不再白屏。
+- 顶部加「缓存 · N 分钟前」chip（`fromCache` 或数据超过 60 秒时出现，点一下就是 refresh）。
+- 死过一次的教训：`startScan` 里 `entries = []` 会让「后台刷新」变成白屏，所以刷新路径必须走 keep。
+- 验证：隔离站 `POST /scan` 实测 refresh → history 8，navigate → history 仍 8 且 `fromCache=true`，
+  再 refresh → 9；单测 30 项（新增 `scan-reason.test.mjs` 3 项）。
+- 截图 `.verify/dc-colors/zh-1440-cache.png`（标题行的缓存 chip）。

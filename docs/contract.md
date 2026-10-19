@@ -57,6 +57,8 @@
 ```
 
 - **扫描是持久周期**：账本跨进程/跨会话存在；启动时用 `latest` 秒开，不自动重扫。
+- **导航不是测量**：`navigate` 的扫描只更新当前画面（`fromCache` / `revalidating`），不追加历史，
+  也不推进增量与执行台账——否则趋势图记的是「你点了哪里」。
 - **决定与标注是全局的**（按绝对路径），不随根目录或会话丢失；`by` 记录是人类还是 Agent 写的。
 - **`facetHue` 是「类别 → 色号」的持久映射**（0–7，-1 = 中性色）。类别第一次出现时分配，
   之后跨会话、跨重扫都不变；调色板只有 8 格，用完后新类别退回中性色。
@@ -175,7 +177,7 @@
 | 方法 | 路径 | 作用 |
 |---|---|---|
 | GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
-| POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
+| POST | `/plugins/dsh-disk-canvas/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
 | GET | `/plugins/dsh-disk-canvas/proposal` | 提案快照（决定 + 判断 + 规则） |

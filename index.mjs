@@ -18,6 +18,8 @@ export const inject = ['tools', 'webServer']
 
 const HOME = process.env.HOME ?? '/'
 const TOP_LIMIT = 30
+/** 扫描原因：只有 refresh / schedule / agent / boot 才算「测量」，navigate 不写历史。 */
+const SCAN_REASONS = new Set(['navigate', 'refresh', 'schedule', 'agent', 'boot'])
 
 export function apply(ctx, config) {
   const mode = config?.mode === 'tools' ? 'tools' : 'host'
@@ -35,26 +37,57 @@ export function apply(ctx, config) {
   ctx.effect(() => () => ledger.flush(), 'disk-canvas: ledger flush')
   let running = null
   let queued = null
+  let queuedReason = 'refresh'
+  let queuedKeep = false
 
   /** 渐进扫描：子项一完成就上屏；同一时间只跑一个，后到的请求排队换根。 */
-  const beginScan = (root) => {
-    if (running) { queued = root; return running }
-    store.startScan(root)
-    running = scanChildren(root, (item) => store.addEntry(item))
-      .then((result) => store.finishScan({
-        partial: result.partial,
-        scannedAt: result.scannedAt,
-        patterns: result.patterns,
-        patternsTruncated: result.patternsTruncated,
-      }))
-      .catch(() => store.finishScan({ partial: true, scannedAt: Date.now() }))
+  const beginScan = (root, reason = 'refresh', { keep = false } = {}) => {
+    if (running) { queued = root; queuedReason = reason; queuedKeep = keep; return running }
+    store.startScan(root, { keep })
+    running = scanChildren(
+      root,
+      keep ? undefined : (item) => store.addEntry(item),
+    )
+      .then((result) => {
+        if (keep) for (const item of result.entries) store.addEntry(item)
+        return store.finishScan({
+          partial: result.partial,
+          scannedAt: result.scannedAt,
+          patterns: result.patterns,
+          patternsTruncated: result.patternsTruncated,
+          reason,
+        })
+      })
+      .catch(() => store.finishScan({ partial: true, scannedAt: Date.now(), reason }))
       .finally(() => {
         running = null
         const next = queued
+        const nextReason = queuedReason
+        const nextKeep = queuedKeep
         queued = null
-        if (next) beginScan(next)
+        queuedReason = 'refresh'
+        queuedKeep = false
+        if (next) beginScan(next, nextReason, { keep: nextKeep })
       })
     return running
+  }
+
+  /** 导航阈值：比这还旧就顺手在后台刷新一次（不写历史、不白屏）。 */
+  const NAV_MAX_AGE_MS = 10 * 60 * 1000
+
+  /**
+   * 换根的统一入口。
+   * navigate —— 有缓存先给缓存（秒开），太旧才后台刷新；不写历史。
+   * refresh / schedule / agent / boot —— 真扫一次，算「测量」。
+   */
+  const openRoot = (root, reason = 'refresh') => {
+    if (reason !== 'navigate') return beginScan(root, reason)
+    const cached = ledger.latest(root)
+    if (!cached) return beginScan(root, 'refresh')
+    if (running) { queued = root; queuedReason = reason; queuedKeep = false; return running }
+    store.hydrate(cached)
+    if (Date.now() - cached.at > NAV_MAX_AGE_MS) beginScan(root, 'navigate', { keep: true })
+    return Promise.resolve(store)
   }
 
   /** 自动扫描：按记住的间隔重扫上一次的根；关掉就是普通手动模式。 */
@@ -65,7 +98,7 @@ export function apply(ctx, config) {
     if (!hours) return
     autoTimer = setInterval(() => {
       if (store.state.scanning) return
-      beginScan(store.state.root ?? HOME)
+      openRoot(store.state.root ?? HOME, 'schedule')
     }, hours * 3600_000)
     autoTimer.unref?.()
   }
@@ -74,14 +107,14 @@ export function apply(ctx, config) {
   {
     const hours = store.state.config?.autoScanHours ?? 0
     const age = Date.now() - (store.state.scannedAt || 0)
-    if (hours > 0 && (!store.state.scannedAt || age > hours * 3600_000)) beginScan(store.state.root ?? HOME)
+    if (hours > 0 && (!store.state.scannedAt || age > hours * 3600_000)) openRoot(store.state.root ?? HOME, 'schedule')
   }
 
   /** 工具要完整结果：等当前扫描，必要时换根重扫。 */
   const scanAndWait = async (root) => {
     const target = root ?? store.state.root ?? HOME
     if (running) await running
-    if (store.state.root !== target || store.state.scannedAt === 0 || store.state.scanning) await beginScan(target)
+    if (store.state.root !== target || store.state.scannedAt === 0 || store.state.scanning || store.state.fromCache) await beginScan(target, 'agent')
     return store
   }
 
@@ -131,7 +164,7 @@ export function apply(ctx, config) {
         handler: async (req, res) => {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            if (!store.state.root && !running) beginScan(HOME)
+            if (!store.state.root && !running) openRoot(HOME, 'boot')
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -150,7 +183,8 @@ export function apply(ctx, config) {
             if (typeof root !== 'string' || !isAbsolute(root)) return json(res, 400, { error: 'path must be absolute' })
             const info = await stat(root)
             if (!info.isDirectory()) return json(res, 400, { error: 'path is not a directory' })
-            beginScan(root)
+            const reason = SCAN_REASONS.has(body.reason) ? body.reason : 'refresh'
+            openRoot(root, reason)
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -230,7 +264,7 @@ export function apply(ctx, config) {
         handler: async (req, res) => {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            if (!store.state.root && !running) beginScan(HOME)
+            if (!store.state.root && !running) openRoot(HOME, 'boot')
             json(res, 200, store.exportPlan())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
