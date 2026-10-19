@@ -405,3 +405,12 @@ en 界面里 facet 仍是 Agent 写的中文词（预期：分类词是内容，
 
 验证：菜单 DOM = 「复制清单 / 清理脚本 / 提示」；`navigator.clipboard.readText()` 拿到的 Markdown
 含「这是快照」一行；复制后出现 toast「清单已复制」；控制台无 error。
+
+## 2026-10-19 · 1.3.1 窄屏：检查器改成浮层
+
+- 之前 390 宽时 `padding-right:308px` 把画布挤到近 0，总览还写着「4 项小于 1 像素」。
+- 现在 `.dc-root` 是容器（`container-type: inline-size`），`@container (max-width: 560px)` 下：
+  不选中 → 检查器不显示、画布满宽；选中 → 检查器变成浮层（inset 8px + shadow），可以点关闭。
+- `.dc-body` 上加 `data-rail="open|none"` 让 CSS 知道「有没有选中」——容器查询本身读不到状态。
+- 验证：390 宽画布 295px（原来近 0）、无横向溢出；选中 old.dmg 后浮层出现、关闭按钮可用；
+  1440 宽行为不变。截图 `.verify/dc-colors/zh-390-canvas.png` / `zh-390-sheet.png`。
