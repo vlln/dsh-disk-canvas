@@ -10,6 +10,7 @@ import { scanChildren } from './lib/src/scan.mjs'
 import { createStore } from './lib/src/store.mjs'
 import { createLedger } from './lib/src/ledger.mjs'
 import { PATHS } from './lib/src/routes.mjs'
+import { listQuarantine, restoreQuarantine } from './lib/src/quarantine.mjs'
 import { json, readJson, isCrossOrigin } from './lib/src/http.mjs'
 
 export const name = 'dsh-disk-canvas'
@@ -199,6 +200,22 @@ export function apply(ctx, config) {
               scheduleAuto()
             }
             json(res, 200, store.snapshot())
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.quarantine,
+        handler: async (req, res) => {
+          try {
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            if (req.method === 'GET') return json(res, 200, await listQuarantine({ home: HOME }))
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, POST' })
+            const body = await readJson(req)
+            const result = await restoreQuarantine({ home: HOME, batch: body.batch, name: body.name })
+            json(res, 200, result)
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }

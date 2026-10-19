@@ -137,6 +137,22 @@
 - 路径用单引号包裹并转义（`'` → `'\''`），带空格的路径安全；
 - 生成时跳过含换行的路径（不生成不可读的脚本）。
 
+## 2.9 隔离区
+
+清理脚本在 `$QUARANTINE/manifest.tsv` 里每条写一行：
+
+```
+001-node_modules	12400000000	/Users/me/Project/app/node_modules
+```
+
+列：`隔离后的名字 <TAB> 记录时的体积 <TAB> 原绝对路径`。
+
+- `GET /quarantine` 读出所有 `dsh-disk-canvas-*` 批次：`{ base, batches: [{ id, at, hasManifest, count, bytes, entries: [{ name, bytes, path, restorable }] }], count, bytes }`。
+  目录名的时间戳（`dsh-disk-canvas-YYYYMMDD-HHMMSS`）用来排序；没有 manifest 的批次照样列出来，但 `restorable: false`。
+- `POST /quarantine { batch, name }` 用 `rename` 移回原路径：目标已存在 → `target-exists`；
+  隔离区里的副本已经没了但原位置有 → `already`；跨磁盘（`EXDEV`）→ `cross-device`（不复制，让你手动处理）。
+- 插件只做 `mv`，不删除：清空废纸篓永远是你自己的动作。
+
 ## 3. 计划
 
 ```jsonc
@@ -159,6 +175,8 @@
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
+| GET | `/plugins/dsh-disk-canvas/quarantine` | 列出 `~/.Trash/dsh-disk-canvas-*` 批次（读 manifest） |
+| POST | `/plugins/dsh-disk-canvas/quarantine` | `{ batch }` 整批移回 / `{ batch, name }` 单项移回 |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
