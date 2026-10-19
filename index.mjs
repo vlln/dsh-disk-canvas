@@ -137,7 +137,8 @@ export function apply(ctx, config) {
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
             if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
             const body = await readJson(req)
-            store.annotate({ path: body.path, decision: body.decision, note: body.note })
+            if (Array.isArray(body.paths)) store.annotateMany({ paths: body.paths, decision: body.decision, note: body.note })
+            else store.annotate({ path: body.path, decision: body.decision, note: body.note })
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })

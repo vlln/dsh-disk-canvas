@@ -64,6 +64,8 @@
 ```
 
 - 批注按 `path` 全局保留，换目录重扫、换会话、重启进程都不会丢（落在账本里）。
+- **批量**：`{ paths, decision }` 等价于对每个 path 各写一次（去重、忽略非绝对路径、上限 500），
+  框选后一次请求写十几个决定；返回的仍是完整 snapshot。
 - **`decision` 可以省略**：即「只写备注」。备注和决定相互独立——先记一笔、晚点再定，
   不会因为还没决定就写不进去；决定清空后备注仍在，两者都空才删掉这条批注。
 - 只有 `keep | delete | unsure` 计入「已审」；带备注但没决定的项仍算未审。
@@ -97,7 +99,7 @@
 |---|---|---|
 | GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
-| POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注） |
+| POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。

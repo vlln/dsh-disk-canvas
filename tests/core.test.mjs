@@ -84,6 +84,23 @@ test('store: 只写备注不改变决定，也不计入已审', () => {
   assert.equal(store.snapshot().annotations['/tmp/n/x'], undefined)
 })
 
+test('store: 批量标注一次写多个路径，去重且忽略非法路径', () => {
+  const store = createStore()
+  scan(store, '/tmp/m', [
+    { path: '/tmp/m/a', name: 'a', kind: 'dir', bytes: 100, files: 1, latestModified: 1 },
+    { path: '/tmp/m/b', name: 'b', kind: 'dir', bytes: 50, files: 1, latestModified: 1 },
+    { path: '/tmp/m/c', name: 'c', kind: 'file', bytes: 10, files: 1, latestModified: 1 },
+  ])
+  const written = store.annotateMany({ paths: ['/tmp/m/a', '/tmp/m/b', '/tmp/m/a', 'relative', '/tmp/m/c'], decision: 'delete', note: '一起清' })
+  assert.equal(written, 3)
+  const snap = store.snapshot()
+  assert.equal(snap.plan.deleteCount, 3)
+  assert.equal(snap.plan.reclaimBytes, 160)
+  assert.equal(snap.annotations['/tmp/m/a'].note, '一起清')
+  assert.throws(() => store.annotateMany({ paths: [], decision: 'delete' }), /non-empty array/)
+  assert.throws(() => store.annotateMany({ paths: ['/tmp/m/a'], decision: 'rm' }), /decision must be one of/)
+})
+
 test('store: Agent 标注覆盖规则推断并标记来源', () => {
   const store = createStore()
   scan(store, '/Users/me/Library', [{ path: '/Users/me/Library/Caches', name: 'Caches', kind: 'dir', bytes: 10, files: 1, latestModified: 1 }])
