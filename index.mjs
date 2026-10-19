@@ -16,25 +16,29 @@ const TOP_LIMIT = 30
 
 export function apply(ctx) {
   const store = createStore()
-  let inflight = { root: null, promise: null }
+  let running = null
+  let queued = null
 
-  /** 同路径的并发扫描复用一个 promise；换路径则新开。 */
-  const scanTo = (root) => {
-    if (inflight.promise && inflight.root === root) return inflight.promise
-    const promise = scanChildren(root).then((result) => {
-      store.setScan(result)
-      return store
-    })
-    inflight = { root, promise }
-    promise.catch(() => {}).finally(() => {
-      if (inflight.promise === promise) inflight = { root: null, promise: null }
-    })
-    return promise
+  /** 渐进扫描：子项一完成就上屏；同一时间只跑一个，后到的请求排队换根。 */
+  const beginScan = (root) => {
+    if (running) { queued = root; return running }
+    store.startScan(root)
+    running = scanChildren(root, (item) => store.addEntry(item))
+      .then((result) => store.finishScan({ partial: result.partial, scannedAt: result.scannedAt }))
+      .catch(() => store.finishScan({ partial: true, scannedAt: Date.now() }))
+      .finally(() => {
+        running = null
+        const next = queued
+        queued = null
+        if (next) beginScan(next)
+      })
+    return running
   }
 
-  const ensure = async (root) => {
-    if (root) return scanTo(root)
-    if (!store.state.root) return scanTo(HOME)
+  /** 工具要完整结果：等当前扫描，必要时换根重扫。 */
+  const scanAndWait = async (root) => {
+    if (running) await running
+    if (store.state.root !== root || store.state.scannedAt === 0) await beginScan(root)
     return store
   }
 
@@ -68,7 +72,7 @@ export function apply(ctx) {
         handler: async (req, res) => {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            await ensure()
+            if (!store.state.root && !running) beginScan(HOME)
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -87,7 +91,7 @@ export function apply(ctx) {
             if (typeof root !== 'string' || !isAbsolute(root)) return json(res, 400, { error: 'path must be absolute' })
             const info = await stat(root)
             if (!info.isDirectory()) return json(res, 400, { error: 'path is not a directory' })
-            await scanTo(root)
+            beginScan(root)
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -115,7 +119,7 @@ export function apply(ctx) {
         handler: async (req, res) => {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            await ensure()
+            if (!store.state.root && !running) beginScan(HOME)
             json(res, 200, store.exportPlan())
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -155,7 +159,7 @@ export function apply(ctx) {
           if (!isAbsolute(root)) throw new Error('path must be absolute')
           const info = await stat(root)
           if (!info.isDirectory()) throw new Error('path is not a directory')
-          await scanTo(root)
+          await scanAndWait(root)
           return summarize()
         },
       })),
@@ -176,9 +180,8 @@ export function apply(ctx) {
           render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
         },
         execute: async () => {
-          await ensure()
-          const summary = summarize(TOP_LIMIT)
-          return summary
+          await scanAndWait(store.state.root ?? HOME)
+          return summarize(TOP_LIMIT)
         },
       })),
       ctx.tools.register(defineTool({

@@ -28,17 +28,18 @@ test('classify: 谨慎项与未知项', () => {
   assert.equal(unknown.confidence, 0)
 })
 
+function scan(store, root, entries) {
+  store.startScan(root)
+  for (const entry of entries) store.addEntry(entry)
+  store.finishScan({ partial: false, scannedAt: Date.now() })
+}
+
 test('store: 标注决定后计划累计可释放体积', () => {
   const store = createStore()
-  store.setScan({
-    root: '/tmp/root',
-    partial: false,
-    scannedAt: Date.now(),
-    entries: [
-      { path: '/tmp/root/a', name: 'a', kind: 'dir', bytes: 100, files: 1, latestModified: 1 },
-      { path: '/tmp/root/b', name: 'b', kind: 'file', bytes: 50, files: 1, latestModified: 1 },
-    ],
-  })
+  scan(store, '/tmp/root', [
+    { path: '/tmp/root/a', name: 'a', kind: 'dir', bytes: 100, files: 1, latestModified: 1 },
+    { path: '/tmp/root/b', name: 'b', kind: 'file', bytes: 50, files: 1, latestModified: 1 },
+  ])
   store.annotate({ path: '/tmp/root/a', decision: 'delete', note: '缓存' })
   store.annotate({ path: '/tmp/root/b', decision: 'keep' })
   const snap = store.snapshot()
@@ -51,7 +52,7 @@ test('store: 标注决定后计划累计可释放体积', () => {
 
 test('store: 清除批注回到未审', () => {
   const store = createStore()
-  store.setScan({ root: '/tmp/r', partial: false, scannedAt: 1, entries: [{ path: '/tmp/r/x', name: 'x', kind: 'file', bytes: 1, files: 1, latestModified: 1 }] })
+  scan(store, '/tmp/r', [{ path: '/tmp/r/x', name: 'x', kind: 'file', bytes: 1, files: 1, latestModified: 1 }])
   store.annotate({ path: '/tmp/r/x', decision: 'delete' })
   store.annotate({ path: '/tmp/r/x', decision: 'none' })
   assert.equal(store.snapshot().plan.unreviewedCount, 1)
@@ -59,7 +60,7 @@ test('store: 清除批注回到未审', () => {
 
 test('store: Agent 标注覆盖规则推断并标记来源', () => {
   const store = createStore()
-  store.setScan({ root: '/Users/me/Library', partial: false, scannedAt: 1, entries: [{ path: '/Users/me/Library/Caches', name: 'Caches', kind: 'dir', bytes: 10, files: 1, latestModified: 1 }] })
+  scan(store, '/Users/me/Library', [{ path: '/Users/me/Library/Caches', name: 'Caches', kind: 'dir', bytes: 10, files: 1, latestModified: 1 }])
   store.setClaim({ path: '/Users/me/Library/Caches', claim: '视频剪辑缓存，删了要重新渲染', risk: 'caution', confidence: 0.8 })
   const entry = store.snapshot().entries[0]
   assert.equal(entry.source, 'agent')
@@ -90,4 +91,19 @@ test('scan: 目录体积是递归求和', async () => {
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('store: 渐进扫描期间 scanning=true，子项完成即可见', () => {
+  const store = createStore()
+  store.startScan('/tmp/progressive')
+  assert.equal(store.snapshot().scanning, true)
+  assert.equal(store.snapshot().entries.length, 0)
+  store.addEntry({ path: '/tmp/progressive/a', name: 'a', kind: 'dir', bytes: 10, files: 1, latestModified: 1 })
+  assert.equal(store.snapshot().entries.length, 1)
+  assert.equal(store.snapshot().scanning, true)
+  store.finishScan({ partial: true, scannedAt: 123 })
+  const snap = store.snapshot()
+  assert.equal(snap.scanning, false)
+  assert.equal(snap.partial, true)
+  assert.equal(snap.scannedAt, 123)
 })
