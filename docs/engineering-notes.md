@@ -232,6 +232,17 @@
   2. 用 mock 造未来时间戳时 `Math.floor((now - at) / 86400000)` 是负数，界面显示「-1 d old」，加了 `max(0, …)`。
 - 测试 24 项仍全过（本轮只动客户端）。
 
+### 2026-10-18 第十二轮（定时扫描的两条路）
+
+- 查了 `@deepseek-ai/dsh-schedule` 的类型：它是**会话绑定的提醒投递**（`create(sessionId, …)` 到点把 prompt
+  送回原会话），不是「插件后台任务调度器」。所以插件自己的 `setInterval` 保留——它管「数据新鲜」；
+  dsh 的 schedule 管「到点让 Agent 汇报」。
+- 因此这轮把后者做成了**提示词里的一句话**：preset 人设新增第 (8) 条，让 Agent 在用户想定期看时用 `schedule`
+  工具建提醒，而不是自己循环扫描。没有新增代码路径，也没有伪造一个「已接入 Automation」的说法。
+- Linux / Windows 这轮没动：本机只有 macOS，改 Trash 路径与规则却无法验证，宁可不写。
+  真要支持，第一步是把 `~/.Trash` 换成平台查询（Linux 走 XDG Trash，Windows 走回收站 API），
+  第二步是把 `~/Library`、`.Trash` 这些规则按平台拆表。
+
 ### 未完成
 
 - 真实会话里让模型调一次 `disk_canvas_scan` / `disk_canvas_claim`（需要模型凭据与一次对话）。
