@@ -58,6 +58,32 @@ test('store: 清除批注回到未审', () => {
   assert.equal(store.snapshot().plan.unreviewedCount, 1)
 })
 
+test('store: 只写备注不改变决定，也不计入已审', () => {
+  const store = createStore()
+  scan(store, '/tmp/n', [{ path: '/tmp/n/x', name: 'x', kind: 'file', bytes: 1, files: 1, latestModified: 1 }])
+  store.annotate({ path: '/tmp/n/x', note: '先记一笔' })
+  let snap = store.snapshot()
+  assert.equal(snap.annotations['/tmp/n/x'].note, '先记一笔')
+  assert.equal(snap.annotations['/tmp/n/x'].decision, undefined)
+  assert.equal(snap.plan.unreviewedCount, 1)
+  assert.equal(snap.plan.deleteCount, 0)
+
+  store.annotate({ path: '/tmp/n/x', decision: 'keep' })
+  store.annotate({ path: '/tmp/n/x', note: '备份过了' })
+  snap = store.snapshot()
+  assert.equal(snap.annotations['/tmp/n/x'].decision, 'keep')
+  assert.equal(snap.annotations['/tmp/n/x'].note, '备份过了')
+  assert.equal(snap.plan.keepCount, 1)
+
+  store.annotate({ path: '/tmp/n/x', decision: 'none' })
+  snap = store.snapshot()
+  assert.equal(snap.annotations['/tmp/n/x'].decision, undefined)
+  assert.equal(snap.annotations['/tmp/n/x'].note, '备份过了')
+
+  store.annotate({ path: '/tmp/n/x', note: '' })
+  assert.equal(store.snapshot().annotations['/tmp/n/x'], undefined)
+})
+
 test('store: Agent 标注覆盖规则推断并标记来源', () => {
   const store = createStore()
   scan(store, '/Users/me/Library', [{ path: '/Users/me/Library/Caches', name: 'Caches', kind: 'dir', bytes: 10, files: 1, latestModified: 1 }])

@@ -40,7 +40,7 @@
     "/Users/me": {
       "scans": [                       // 最多 20 条，90 天，全局 ≤5 MB
         { "at": 1792387357844, "totalBytes": 146000000000, "partial": false,
-          "entries": [{ "path": "…", "name": "…", "kind": "dir", "bytes": 0, "files": 0, "partial": false }] }
+          "entries": [{ "path": "…", "name": "…", "kind": "dir", "bytes": 0, "files": 0, "modified": 1750000000000, "partial": false }] }
       ]
     }
   },
@@ -58,13 +58,15 @@
 ```jsonc
 {
   "path": "/Users/me/Downloads/x.dmg",
-  "decision": "delete",                  // keep | delete | unsure | none（none = 清除）
+  "decision": "delete",                  // 省略 = 只改备注；keep | delete | unsure | none（none = 清除决定）
   "note": "装完了，确认不是唯一备份"
 }
 ```
 
-- 批注按 `path` 全局保留，换目录重扫不会丢。
-- v0 只存内存，不落盘；插件重载即清空。
+- 批注按 `path` 全局保留，换目录重扫、换会话、重启进程都不会丢（落在账本里）。
+- **`decision` 可以省略**：即「只写备注」。备注和决定相互独立——先记一笔、晚点再定，
+  不会因为还没决定就写不进去；决定清空后备注仍在，两者都空才删掉这条批注。
+- 只有 `keep | delete | unsure` 计入「已审」；带备注但没决定的项仍算未审。
 - **批注不等于执行**：导出计划只是 JSON，本版本没有任何删除/移动接口。
 
 ## 2.5 扫描本身
@@ -95,7 +97,7 @@
 |---|---|---|
 | GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
-| POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision, note? }` 写/清批注 |
+| POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注） |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。

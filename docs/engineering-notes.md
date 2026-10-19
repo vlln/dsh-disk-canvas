@@ -69,12 +69,44 @@
   因此不需要自造磁盘检查工具。
 - 测试 13 项全过（新增 ledger 4 项：裁剪 / 增量 / 跨实例持久 / store 接线）。
 
+### 2026-10-18 第四轮（UI/UX：画布 + 检查器）
+
+真实会话里验收（`Greeting` 会话，42 分钟前有 disk-cleanup 的回复）：Chat / Trajectory / **Disk Canvas** 三个页签，
+`dc-root` 渲染、68 个方块、1440×900 与 1120×780 两档都看过截图。
+
+- **配色底座**：查了 402 个 `--dsw-*` token 的解析值，发现**浅色主题下 `bg-layer-1/2/3` 全是 `#fff`**
+  ——原来「画布 = layer-2、方块 = layer-1」根本没有对比，整块看起来就是白纸。改法：
+  画布用 `--dsw-alias-bg-module-platform`（`#f5f6f7`）做凹槽，方块用 `bg-base` 做凸起，靠 2px 间隙出格线。
+- **风险色从「整块填充」改成「左侧 3px 色条」**：填充只留 7–10% 的淡色，色条用饱和色。
+  `unknown` 不画色条（没信息就不该占视觉注意力）——这一条直接消掉了右下角那坨小方块的「灰泥」。
+- **字号按方块尺寸分档**（lg / md / sm / xs）：lg 名字 16px + 体积·占比 + 文件数·改动 + 一句话判断（≤46ch）；
+  xs 只剩色块纹理，靠悬停卡与检查器读。之前 640×1080 的大方块里躺着一行 12px 名字，才是「空」的根源。
+- **检查器不再是空面板**：没选中时是总览（审查进度条、四档计数、按体积排的待审队列、键位提示），
+  选中时是详情（判断 / 依据 / 四项数值 / 三段决定 / 备注 / 进入目录）。
+- **决定态**：先用斜纹，实测 90 GB 的大方块被斜纹铺满、字看不清 → 改成 5% 红底 + 1.5px 红框 + ✕；
+  保留 = 绿框 + ✓；待复查 = 黄虚线 + ?。
+- **布局坑（值得记）**：会话视图区高度**由内容撑开**（`viewArea` 是 `flex:1 0 auto`，不吃剩余空间），
+  检查器内容一长就把整页顶下去、底部计划条被输入框盖住。改法：检查器 `position:absolute` 贴在
+  `.dc-body` 右侧、画布用 `padding-right` 让位——撑高的来源消失后，页面高度回到 736，计划条不再被压。
+  另外 `dc-stats` 一类的栅格如果让检查器自然高度超过 638，也会复发，所以队列是 `flex:1` + 内部滚动。
+- **备注自动保存**：`onChange` → 600ms 防抖 → `POST /annotate {path, note}`（不带 decision）；
+  切走方块时把未落盘的 timer 先 flush 掉。实测「打字 200ms 后立刻切走」备注仍在服务端
+  （`{"note":"临时备注-不该丢","by":"human"}`）。
+- **服务端契约改动**：`annotate` 的 `decision` 变为可选（省略 = 只改备注），备注与决定解耦；
+  决定清空后备注保留，两者都空才删条目。账本条目新增 `modified`，重启后不再显示「—」。
+- **验收读数**：740ms 轮询下 68 方块；空格循环（keep→unsure→none）；←/→ 空间导航到相邻方块；
+  Esc 先取消选中再返回上层；检查器开 → 画布 873px / 关 → 1181px；预览模式 68 → 66 方块；
+  1120×780 下标题行折成两行（右组自动右对齐），计划条 bottom=642 未被输入框遮挡。
+- 测试 14 项全过（新增「只写备注不改变决定、也不计入已审」）。
+- 截图入库：`docs/screenshot.jpg`（README hero）。
+
 ### 未完成
 
 - 真实会话里让模型调一次 `disk_canvas_scan` / `disk_canvas_claim`（需要模型凭据与一次对话）。
 - Plugins 页里的插件图标视觉验收。
-- 页签内画布在非空白会话里的视觉验收（本机实例无模型凭据；需在有凭据的实例里看一眼）。
-- 真实会话里验证「磁盘整理」preset 只挂 `disk_canvas_*` 工具。
+- 真实会话里验证「磁盘整理」preset 只挂 `disk_canvas_*` 工具（工具列表已用 `--dump-config` 核实，未跑模型）。
+- 框选批量标记、缩放动画、小方块聚合（「其余 N 项」）——下一轮。
+- 大块独占画布时（本例 ~/Project 占 66%），单层树图天然会有大片留白；要更密需要第二层数据。
 
 ## 开发循环（本地）
 
@@ -84,7 +116,7 @@ npm_config_cache=/tmp/npm-cache npm pack
 DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_store_dir=/tmp/pnpm-store \
   dsh plugin --profile web remove dsh-disk-canvas
 DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_store_dir=/tmp/pnpm-store \
-  dsh plugin --profile web add ./dsh-disk-canvas-0.1.0.tgz
+  dsh plugin --profile web add ./dsh-disk-canvas-0.2.0.tgz
 ```
 
 改 client bundle 需要重启 web（`__DSH_BOOT__` 的 bundle 表在启动时组合）。
