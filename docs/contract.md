@@ -177,6 +177,8 @@
 | GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
 | GET | `/plugins/dsh-disk-canvas/quarantine` | 列出 `~/.Trash/dsh-disk-canvas-*` 批次（读 manifest） |
 | POST | `/plugins/dsh-disk-canvas/quarantine` | `{ batch }` 整批移回 / `{ batch, name }` 单项移回 |
+| GET | `/plugins/dsh-disk-canvas/proposal` | 提案快照（决定 + 判断 + 规则） |
+| POST | `/plugins/dsh-disk-canvas/proposal` | 导入提案：只补缺，返回 `{decisions, claims, rules, skipped}` |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 

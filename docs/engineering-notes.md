@@ -243,6 +243,22 @@
   真要支持，第一步是把 `~/.Trash` 换成平台查询（Linux 走 XDG Trash，Windows 走回收站 API），
   第二步是把 `~/Library`、`.Trash` 这些规则按平台拆表。
 
+### 2026-10-18 第十三轮（提案快照 / 趋势）
+
+- **提案快照**：`GET/POST /proposal`。导出决定、Agent 判断、规则；导入**只补缺**——
+  已有决定跳过、已有规则不重复，返回 `{decisions, claims, rules, skipped}` 让界面说清楚导入了什么。
+  `annotations` 里带 `imported: true` 便于以后区分来源。
+- **趋势**：检查器总览里加一条「近 N 次 +X GB」+ 一条 56×16 的折线，数据来自 `history`（最近 10 次总量），
+  鼠标悬停给每次的时间与体积。
+- **踩到两个坑**：
+  1. `Sparkline` 里写了 `const h = 16`，把 React 的 `h`（createElement）遮蔽了 → 整个 conversation.view
+     槽位崩溃、页签直接消失。报错是 `h is not a function`，但表象很像「插件没加载」，
+     在无头浏览器里排查了一会儿。
+  2. dsh 的 client bundle 是**进程启动时组合**的：改完 `lib/client.js` 只 reload 页面不够，
+     必须重启 web 进程（`?rev=` 是组合后的版本号）。这几轮里出现过两次「改了没生效」，
+     都是这个原因。以后改 client 一律 `restart → 打开新 tab`。
+- 测试 25 项通过（新增提案导入 1 项：只补缺、不覆盖、计划外路径也记下）。
+
 ### 未完成
 
 - 真实会话里让模型调一次 `disk_canvas_scan` / `disk_canvas_claim`（需要模型凭据与一次对话）。

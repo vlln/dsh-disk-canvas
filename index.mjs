@@ -207,6 +207,23 @@ export function apply(ctx, config) {
       }),
       ctx.webServer.register({
         kind: 'exact',
+        path: PATHS.proposal,
+        handler: async (req, res) => {
+          try {
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            if (req.method === 'GET') return json(res, 200, store.exportProposal())
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, POST' })
+            const body = await readJson(req)
+            if (body?.kind !== 'proposal' && !body?.annotations) return json(res, 400, { error: 'not a proposal file' })
+            const result = store.importProposal({ annotations: body.annotations, claims: body.claims, rules: body.rules })
+            json(res, 200, { ...result, state: store.snapshot() })
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
         path: PATHS.quarantine,
         handler: async (req, res) => {
           try {
