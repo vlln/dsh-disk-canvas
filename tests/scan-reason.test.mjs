@@ -81,3 +81,18 @@ test('scan reason: hydrate 标 fromCache，真扫完清掉', async () => {
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('scan reason: 后台刷新失败且没有新结果时保留旧画面', async () => {
+  const { dir, store } = await setup()
+  try {
+    store.startScan(ROOT)
+    store.addEntry(entry('keep-me', 700))
+    store.finishScan({ partial: false, scannedAt: Date.now(), reason: 'refresh', patterns: [], patternsTruncated: false })
+
+    store.startScan(ROOT, { keep: true })
+    store.finishScan({ partial: true, scannedAt: Date.now() + 10, reason: 'navigate', failed: true, patterns: [], patternsTruncated: false })
+    assert.deepEqual(store.snapshot().entries.map((e) => e.name), ['keep-me'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
