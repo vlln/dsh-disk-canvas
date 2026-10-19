@@ -1,6 +1,31 @@
-# dsh-disk-canvas bundle patch：把画布挂进 web 组合。
-# Node half 负责扫描、规则标注与提案状态（webServer 只读路由 + 三个工具），
-# client half 由 __ModuleLoader__ 内核挂载，渲染侧边栏「磁盘画布」页。
+# dsh-disk-canvas bundle patch：宿主（画布 + 路由）与「磁盘整理」preset（提示词 + 工具）。
+# 同一份包挂两次：宿主层 mode=host 提供 API 服务与只读路由；preset 子行 mode=tools 只挂工具，
+# 于是 disk_canvas_* 只对该 preset 的 Agent 可见，标准/其它模式的 Agent 看不到这些工具。
 - insert:
     - id: dsh-disk-canvas
       name: dsh-disk-canvas
+      config:
+        mode: host
+    - id: preset-disk-cleanup
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: disk-cleanup
+        name: 磁盘整理
+        description: 把磁盘扫成一份可批注的提案：只分析、标注、预览，绝不自动删除。
+        order: 20
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: >-
+                你是磁盘整理助手。你的工作不是替用户清理，而是把磁盘变成一份用户能审查、能修改的提案。
+                流程：先用 disk_canvas_scan 扫描，再用 disk_canvas_claim 给有把握的项写判断，最后用
+                disk_canvas_state 汇报计划与用户已有的批注。硬规则：(1) 绝不删除、移动、压缩任何文件，
+                你也没有这类工具；(2) 没有证据就说不知道，risk 用 unknown，不要用「安全」包装猜测；
+                (3) 每条判断都要能被验证——说明它是什么、删了会怎样、依据是什么；(4) 用户的批注优先于你的
+                判断，用户标了保留就不要继续建议删除；(5) 只扫描用户要求的范围，不遍历无关目录；
+                (6) 回复用用户的语言，简洁，不重复画布里已经写明的信息。
+          - id: disk-canvas-tools
+            name: dsh-disk-canvas
+            config:
+              mode: tools

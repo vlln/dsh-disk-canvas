@@ -15,7 +15,7 @@
   "bytes": 482344960,                    // 递归体积
   "files": 18234,                        // 递归文件数
   "latestModified": 1750000000000,
-  "risk": "caution",                     // safe | caution | high | unknown
+  "risk": "caution",                     // safe | caution | personal | high | unknown
   "claim": "缓存：删除后应用会重建…",     // 一句话判断
   "basis": "缓存规则",                    // 依据（规则名 / Agent 说明）
   "confidence": 0.92,                    // 0–1，规则把握度，不是模型概率
@@ -25,6 +25,8 @@
 ```
 
 **面积 = 字节，颜色 = 风险，决定 = 边框**。三个通道互不复用，避免读者把「大」误读成「重要」。
+
+五档风险只表达「这类对象通常是什么、能不能动」：`safe` 可清、`caution` 需看一眼、`personal` 是你自己的内容、`high` 系统级、`unknown` 没证据。`personal` / `unknown` 不是「可删」。
 
 ## 2. 人的批注
 
@@ -73,7 +75,14 @@
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。
 
-## 5. Agent 工具
+## 5. 入口与归属
+
+- **画布**是会话页签（`conversation.view`，id `dsh-disk-canvas`），任何模式都能打开；
+- **工具**只挂在 `磁盘整理` preset（`preset-disk-cleanup`）里：preset 子行以 `mode: tools` 挂同一份包，
+  通过宿主提供的 `dsh-disk-canvas.api` 服务读写同一份状态。标准 / PTC / 极简模式看不到 `disk_canvas_*`；
+- 宿主行（`mode: host`）负责扫描、路由与状态，无论用哪个模式都在跑。
+
+## 6. Agent 工具
 
 | 工具 | 作用 |
 |---|---|
@@ -81,7 +90,9 @@ POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB
 | `disk_canvas_state` | 读当前画布：计划 + 条目 + 人的决定 |
 | `disk_canvas_claim` | 给某路径写标注（覆盖规则推断），**不执行删除** |
 
-## 6. 不做（v0 明确边界）
+三个工具都只在「磁盘整理」preset 内可见。
+
+## 7. 不做（v0 明确边界）
 
 - 不删除、不移动、不压缩任何文件；
 - 不上传路径或文件清单，不发任何网络请求；

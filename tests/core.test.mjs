@@ -10,8 +10,8 @@ import { scanChildren } from '../lib/src/scan.mjs'
 
 test('classify: 系统与个人目录是高危', () => {
   assert.equal(classify('/System/Library', { isDir: true }).risk, 'high')
-  assert.equal(classify('/Users/me/Documents', { isDir: true }).risk, 'high')
-  assert.equal(classify('/Users/me/Projects/app/src', { isDir: true }).risk, 'high')
+  assert.equal(classify('/Users/me/Documents', { isDir: true }).risk, 'personal')
+  assert.equal(classify('/Users/me/Projects/app/src', { isDir: true }).risk, 'personal')
 })
 
 test('classify: 安全的可清理项', () => {

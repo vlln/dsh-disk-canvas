@@ -40,10 +40,26 @@
 3. 扫描进行中再点「重新扫描」/换目录会被静默忽略；改成**排队**，当前轮结束后自动重扫。
    同版本重装还必须 `remove` + `add`（pnpm 按 tarball 完整性判等，直接 `add` 不刷新）。
 
+### 2026-10-18 第二轮（preset / 页签 / 配色）
+
+- **preset 随身分发**：patch 里新增 `preset-disk-cleanup`（`@deepseek-ai/dsh-agent-preset`），子行
+  `dsh-disk-canvas` + `mode: tools`；宿主行 `mode: host` 提供 `dsh-disk-canvas.api` 服务与路由。
+  实测启动无告警；`--dump-config` 里行与子行齐全；模式选择器出现「磁盘整理」（截图确认）。
+  踩坑：Cordis 的 `inject` **不支持** `{required, optional}` 写法（会被当成两个服务名），
+  可选依赖要用 `ctx.reflect.get(name)` 读取。
+- **入口改会话页签**：`conversation.view` 槽（id `dsh-disk-canvas`，order 20），删除 sidebar/main 注册。
+  实测 `ctx.slots.entries('conversation.view')` = `[chat, trajectory, dsh-disk-canvas]`；
+  页签栏只在非空白会话渲染（`showTabs = tabs.length > 1`），空白首页看不到，发首条消息后出现。
+- **配色重做**：新增 `personal`（个人内容，蓝）档，`high` 只留给系统级路径；`unknown` 用中性灰；
+  画布底色改 layer-2、方块加 1px 分隔、加五色图例；修正字号/对比与「1 items」单复数。
+  因实例没有模型凭据，无法创建非空白会话，页签内画布的最终视觉仍需人工看一眼（见下）。
+
 ### 未完成
 
 - 真实会话里让模型调一次 `disk_canvas_scan` / `disk_canvas_claim`（需要模型凭据与一次对话）。
-- Plugins 页里的插件图标视觉验收（画布页的侧栏图标已随截图确认）。
+- Plugins 页里的插件图标视觉验收。
+- 页签内画布在非空白会话里的视觉验收（本机实例无模型凭据，无法造出会话；需在有凭据的实例里看一眼）。
+- 真实会话里验证「磁盘整理」preset 只挂 `disk_canvas_*` 工具。
 
 ## 开发循环（本地）
 
