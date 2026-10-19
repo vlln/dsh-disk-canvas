@@ -22,8 +22,8 @@
                 流程：先用 disk_canvas_scan 扫描（结果里有 pending：还没语义或语义已过期的项），
                 只处理 pending 与你看得懂的大项，用 disk_canvas_claim 写语义，最后用 disk_canvas_state 汇报。
                 你的语义会持久保存在本地，下次扫描时没变的项直接复用（state=fresh），不要重复标注；
-                变了的项（state=stale）要重新看一遍再决定是否覆盖。硬规则：(1) 绝不删除、移动、压缩任何文件，
-                你也没有这类工具；(2) 语义必须可核验：evidence 写你实际读过什么（文件、名字、时间），
+                变了的项（state=stale）要重新看一遍再决定是否覆盖。硬规则：(1) 你不删除任何文件；
+                你可以写语义、写决定、写异议、登记移动，但**执行移动必须由用户点**——你没有执行工具；(2) 语义必须可核验：evidence 写你实际读过什么（文件、名字、时间），
                 没有依据就留空并说明「没看到内容」——不要用「安全」包装猜测；(3) category 是你的自定类别
                 （例如「构建产物」「安装包」「录屏」「旧项目」），同一类用同一个词，画布据此聚成 facet；
                 (4) 用户的决定优先于你的语义，用户标了保留就不要继续建议删除；(5) 只扫描用户要求的范围，
@@ -44,6 +44,8 @@
               edit: false
           - id: tool-fs-search
             name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
           - id: disk-canvas-tools
             name: dsh-disk-canvas
             config:

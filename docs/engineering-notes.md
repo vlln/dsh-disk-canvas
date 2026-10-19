@@ -533,3 +533,21 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
 `client.js` 是单文件、无类型检查：两次把 `hasAgentMarks` / `labeled` 写在了 `Rail` 作用域、
 却在 `Page` 里引用，页面直接白屏（`slot entry crashed`）。改完必须真跑一次页面，
 `node --check` 只能保证语法。
+
+## 2026-10-19 · 1.9.2 preset 从模式菜单消失（真 bug）
+
+现象：模式选择器里没有「磁盘整理」，但 `--dump-config` 里 preset 条目齐全，web 日志无报错。
+
+根因：`@deepseek-ai/dsh-tool-fs-search` 的 Config 里 `sampleOverCapGlobResults` 是 **required**（无默认值）。
+我们的 preset 没给它 → 子插件 schema 校验失败 → 整个 preset 挂载失败（`record.broken`）→
+**客户端把 broken 的 preset 从模式菜单过滤掉**（`dsh-client-ui-agent-preset` 第 1169 行
+`presets.filter(p => p.broken === void 0)`），只在设置页显示「加载失败」。服务端 `logger.warn` 也没落到 stderr。
+
+定位方法（下次照做）：
+1. 造一个最小 preset（只有 persona）确认机制没坏；
+2. 逐个加子插件二分：persona + tool-fs ✅、+ tool-fs-search ❌；
+3. 对照 `preset-standard` 的同一子插件配置，发现少了 required 字段。
+
+修复：preset 里补 `config: { sampleOverCapGlobResults: false }`；
+新增 `tests/preset.test.mjs` 守住这个字段（漏了不报错，只会「菜单里没有」，很难查）。
+顺带把人设里「你没有移动工具」改成现状：可以写语义/决定/异议/登记移动，但执行移动必须用户点。
