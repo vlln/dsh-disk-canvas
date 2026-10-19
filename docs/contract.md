@@ -79,6 +79,31 @@
 预算按子项切分（每个子项 40 万条目 / 20 秒，全局 60 秒）——这样最大的目录不会吃光预算，
 其它子项不会变成 0。扫描进行中再请求 `scan` 会**排队**，当前这轮结束后自动换根重扫。
 
+## 2.6 跨层索引
+
+扫描过程中顺带记录「目录名命中清理规则」的目录（不额外遍历），按类分组：
+
+```jsonc
+{
+  "at": 1792396422487,
+  "truncated": false,
+  "groups": [
+    { "id": "node_modules", "label": "node_modules", "hint": "依赖目录，可由 lockfile 重装",
+      "risk": "caution", "count": 72, "bytes": 13100000000, "files": 1200000, "shown": 72,
+      "entries": [{ "path": "…/node_modules", "bytes": 1200000000, "files": 80933, "risk": "caution",
+                    "claim": "依赖目录，可由 lockfile 重装（node_modules）", "confidence": 0.8,
+                    "source": "rule", "decision": null }] }
+  ]
+}
+```
+
+- **匹配的是名字，不是内容**：`node_modules` / `Caches` / `dist|build|out|target|.next|.nuxt|.turbo|.parcel-cache` /
+  `__pycache__|.pytest_cache|.mypy_cache|.ruff_cache|.venv|venv|.tox` / `Logs` / `.Trash` / `DerivedData`。
+- 同一类里**被其它条目包含的路径会去掉**（外层的 node_modules 已经包含内层，避免合计重复计数）。
+- `risk` 取「这类目录能不能重建」而不是路径位置：项目目录里的 node_modules 仍是 `caution`，不会被当成个人内容。
+- 每组最多带 200 条明细（`shown`），`count` / `bytes` 始终按全部命中算。
+- 快照里只给摘要（无 `entries`），完整索引走 `/patterns`；索引随扫描重建，持久在账本里（只留最近一次）。
+
 ## 3. 计划
 
 ```jsonc
@@ -100,6 +125,7 @@
 | GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
+| GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。

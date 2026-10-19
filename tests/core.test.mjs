@@ -116,6 +116,68 @@ test('store: 非法决定被拒绝', () => {
   assert.throws(() => store.annotate({ path: '/tmp/x', decision: 'rm -rf' }), /decision must be one of/)
 })
 
+test('scan: 跨层索引只收命中的目录名，并给出各自递归体积', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'disk-canvas-pat-'))
+  try {
+    await mkdir(join(root, 'projA', 'node_modules', 'pkg'), { recursive: true })
+    await writeFile(join(root, 'projA', 'node_modules', 'pkg', 'index.js'), Buffer.alloc(1000))
+    await mkdir(join(root, 'projA', 'node_modules', 'pkg2'), { recursive: true })
+    await writeFile(join(root, 'projA', 'node_modules', 'pkg2', 'index.js'), Buffer.alloc(2000))
+    await mkdir(join(root, 'projB', 'node_modules'), { recursive: true })
+    await writeFile(join(root, 'projB', 'node_modules', 'a.js'), Buffer.alloc(500))
+    await mkdir(join(root, 'Library', 'Caches'), { recursive: true })
+    await writeFile(join(root, 'Library', 'Caches', 'c.bin'), Buffer.alloc(300))
+    await mkdir(join(root, 'src'), { recursive: true })
+    await writeFile(join(root, 'src', 'main.js'), Buffer.alloc(100))
+
+    const result = await scanChildren(root)
+    const byPath = new Map(result.patterns.map((h) => [h.path, h]))
+    const nmA = byPath.get(join(root, 'projA', 'node_modules'))
+    const nmB = byPath.get(join(root, 'projB', 'node_modules'))
+    const caches = byPath.get(join(root, 'Library', 'Caches'))
+    assert.equal(nmA.group, 'node_modules')
+    assert.equal(nmA.bytes, 3000)
+    assert.equal(nmB.bytes, 500)
+    assert.equal(caches.group, 'caches')
+    assert.equal(caches.bytes, 300)
+    assert.equal(result.patterns.length, 3, 'src 不该进索引')
+    // 顶层体积仍是递归求和：projA 3000 + projB 500 + Library 300 + src 100
+    const projA = result.entries.find((e) => e.name === 'projA')
+    assert.equal(projA.bytes, 3000)
+    assert.equal(result.entries.reduce((n, e) => n + e.bytes, 0), 3900)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('store: 索引按类分组、去掉嵌套重复、带决定', () => {
+  const store = createStore()
+  store.startScan('/tmp/idx')
+  store.addEntry({ path: '/tmp/idx/a', name: 'a', kind: 'dir', bytes: 10, files: 1, latestModified: 1 })
+  store.finishScan({
+    partial: false,
+    scannedAt: 5,
+    patternsTruncated: false,
+    patterns: [
+      { path: '/tmp/idx/a/node_modules', name: 'node_modules', group: 'node_modules', bytes: 900, files: 9 },
+      { path: '/tmp/idx/a/node_modules/x/node_modules', name: 'node_modules', group: 'node_modules', bytes: 400, files: 4 },
+      { path: '/tmp/idx/b/Caches', name: 'Caches', group: 'caches', bytes: 300, files: 3 },
+    ],
+  })
+  const snap = store.snapshot()
+  const nm = snap.patterns.find((g) => g.id === 'node_modules')
+  assert.equal(nm.count, 1, '嵌套的 node_modules 不该重复计数')
+  assert.equal(nm.bytes, 900)
+  assert.equal(snap.patterns.find((g) => g.id === 'caches').bytes, 300)
+  assert.equal(snap.patternsAt, 5)
+
+  const full = store.patterns()
+  assert.equal(full.groups.find((g) => g.id === 'caches').entries[0].path, '/tmp/idx/b/Caches')
+
+  store.annotateMany({ paths: ['/tmp/idx/b/Caches'], decision: 'delete' })
+  assert.equal(store.patterns().groups.find((g) => g.id === 'caches').entries[0].decision, 'delete')
+})
+
 test('scan: 目录体积是递归求和', async () => {
   const root = await mkdtemp(join(tmpdir(), 'disk-canvas-'))
   try {

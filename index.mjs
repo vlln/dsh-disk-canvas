@@ -41,7 +41,12 @@ export function apply(ctx, config) {
     if (running) { queued = root; return running }
     store.startScan(root)
     running = scanChildren(root, (item) => store.addEntry(item))
-      .then((result) => store.finishScan({ partial: result.partial, scannedAt: result.scannedAt }))
+      .then((result) => store.finishScan({
+        partial: result.partial,
+        scannedAt: result.scannedAt,
+        patterns: result.patterns,
+        patternsTruncated: result.patternsTruncated,
+      }))
       .catch(() => store.finishScan({ partial: true, scannedAt: Date.now() }))
       .finally(() => {
         running = null
@@ -142,6 +147,19 @@ export function apply(ctx, config) {
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.patterns,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            json(res, 200, store.patterns())
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
         },
       }),
