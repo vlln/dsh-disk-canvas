@@ -414,3 +414,25 @@ en 界面里 facet 仍是 Agent 写的中文词（预期：分类词是内容，
 - `.dc-body` 上加 `data-rail="open|none"` 让 CSS 知道「有没有选中」——容器查询本身读不到状态。
 - 验证：390 宽画布 295px（原来近 0）、无横向溢出；选中 old.dmg 后浮层出现、关闭按钮可用；
   1440 宽行为不变。截图 `.verify/dc-colors/zh-390-canvas.png` / `zh-390-sheet.png`。
+
+
+## 2026-10-19 · 1.4.0 分档提案（schema + 工具，先不碰画布 UI）
+
+Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」的数据模型与工具：
+
+- `store.setProposal({ tiers })`：2–3 档，每档 `{id, name, paths, bytes, rationale, regret}`；
+  `bytes` 由当前层的条目算，不在当前层的路径记 0。每根目录保留最近 10 份。
+- `store.applyProposal({ proposalId, tierId })`：只标「还没有决定」的项，人做过的决定跳过并计数——
+  这是提案与人工判断的边界。应用动作不暴露给 Agent（没有对应工具），它只会提交。
+- 工具 `disk_canvas_propose`：给 preset 用，输出每档的条数与体积。
+- 画布 UI 这轮刻意没做：先让数据与工具在真实会话里跑通，再决定提案在画布上长什么样
+  （候选：计划条上方一排档位按钮 + 「这档会标掉 N 项 / 其中 M 项你已经保留」）。
+
+- `POST /apply { proposalId, tierId }` 已接上（UI 还没接），返回 `{applied, skipped}` + 新快照。
+- **踩到的坑**：`state.proposals` 一开始只在 `hydrate` 里载入，`startScan` 换根时忘了读——
+  表现是「账本里有提案，画布上永远空」。补了载入并加了一条回归测试。
+
+测试 35 项（新增 `proposal.test.mjs` 4 项：落账本与跨实例、应用只标未决定项、非法输入拒绝、重扫载入）。
+
+隔离站实测：seed 一份两档提案 → `GET /state` 的 `proposals` 有 2 档（1 项/300 KB、3 项/620 KB）；
+`POST /apply {p-demo, deep}` → `applied 2, skipped 1`，人标了 `keep` 的 `old.dmg` 没被覆盖。
