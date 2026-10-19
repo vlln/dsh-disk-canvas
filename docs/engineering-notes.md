@@ -551,3 +551,16 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
 修复：preset 里补 `config: { sampleOverCapGlobResults: false }`；
 新增 `tests/preset.test.mjs` 守住这个字段（漏了不报错，只会「菜单里没有」，很难查）。
 顺带把人设里「你没有移动工具」改成现状：可以写语义/决定/异议/登记移动，但执行移动必须用户点。
+
+
+## 2026-10-19 · 1.10.0 扫描完成后自动补语义
+
+机制：画布把当前会话 `POST /bind` 给宿主；扫描（refresh / schedule）完成后，宿主往该会话投递一条 user 消息
+（source kind `disk-canvas`），Agent 被唤醒后自己读 pending 写语义。
+
+- 走 `sessionController.commands.prompt(request, source)`：Remote 那层 `prompt(request, signal)` 会把 source
+  固定成 `user`，并用 `signal.throwIfAborted()`——直接把 source 当第二个参数会报 `signal.throwIfAborted is not a function`（踩过）。
+- 保护：5 分钟冷却、只在 refresh/schedule 后触发（agent/navigate/boot 不触发，避免自激）、`config.autoAnnotate` 可关。
+- 验证：绑定真实 session → refresh 扫描 → `state.auto.error === ''`，会话日志里出现
+  「磁盘扫描完成：/private/tmp/dc-fixture（6 项）。其中 2 项还没有语义…」。
+- 还没做「边扫边标」：`disk_canvas_scan` 仍然是等扫描完成才返回；要并发得先给工具加 `wait:false`。

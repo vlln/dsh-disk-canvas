@@ -211,6 +211,20 @@ Agent 可以对「人已经做过的决定」写一句异议：
   `GET /organize/undo/preview?batch=` 返回反向行（`to → 原目录`，冲突规则同上）；
   `POST /organize/undo { batch }` 执行；**全部成功才删掉这一批**，否则保留以便重试。
 
+## 2.14 自动补语义
+
+- 画布打开时 `POST /bind { sessionId }` 把当前会话告诉宿主（`boundSession`）。
+- 用户主动扫描（`reason = refresh | schedule`）完成后，若有 `pending` 项（没语义或已过期），
+  宿主往这个会话投递一条 user 消息（source kind `disk-canvas`）：
+
+  > 磁盘扫描完成：/Users/me（76 项）。其中 12 项还没有语义。请用 disk_canvas_state 读取 pending，
+  > 挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；不要替用户做决定，也不要一次标太多。
+
+- 保护：5 分钟冷却；只在 refresh / schedule 后触发（`agent` / `navigate` / `boot` 不触发，避免自激）；
+  `config.autoAnnotate === false` 关闭。`state.auto` 暴露 `{bound, lastAt, enabled, error}` 便于诊断。
+- 走的是 `sessionController.commands.prompt(request, source)`——Remote 那层会把 source 固定成 `user`，
+  宿主内部可以用自己的 kind，会话日志里能区分「这是画布让我做的」。
+
 ## 3. 计划
 
 ```jsonc

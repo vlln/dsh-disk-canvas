@@ -4,6 +4,7 @@
 //   mode=tools —— preset 子行，只注册 disk_canvas_* 工具，工具只对该 preset 的 Agent 可见。
 // v0 不提供任何删除或移动动作——执行面在确认清单之后，且本版本刻意留空。
 import { stat } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { scanChildren } from './lib/src/scan.mjs'
@@ -41,6 +42,40 @@ export function apply(ctx, config) {
   let queuedReason = 'refresh'
   let queuedKeep = false
 
+  /**
+   * 自动补语义：扫描完成后，把一条「该标注了」的消息投递回当前会话。
+   * 只在用户主动扫描（refresh / schedule）之后触发，有冷却，避免把会话刷成流水账。
+   */
+  let boundSession = null
+  let lastAutoAt = 0
+  let lastAutoError = ''
+  const AUTO_COOLDOWN_MS = 5 * 60 * 1000
+
+  const autoAnnotate = (pending) => {
+    if (!boundSession || store.state.config?.autoAnnotate === false) return
+    if (pending === 0) return
+    if (Date.now() - lastAutoAt < AUTO_COOLDOWN_MS) return
+    lastAutoAt = Date.now()
+    const text = [
+      `磁盘扫描完成：${store.state.root}（${store.state.entries.length} 项）。`,
+      `其中 ${pending} 项还没有语义。`,
+      '请用 disk_canvas_state 读取 pending，挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；',
+      '不要替用户做决定，也不要一次标太多。',
+    ].join('')
+    ctx.inject(['sessionController'], (scope) => {
+      // 走控制器的内部命令通道：它接受我们自己的 source kind（Remote 那层会把 source 固定成 user）
+      const commands = scope.sessionController?.commands
+      if (!commands?.prompt) { lastAutoError = 'sessionController.commands unavailable'; return }
+      Promise.resolve(commands.prompt({
+        requestId: randomUUID(),
+        sessionId: boundSession,
+        mode: 'queue',
+        content: [{ type: 'text', text }],
+      }, { kind: 'disk-canvas' })).then(() => { lastAutoError = '' })
+        .catch((error) => { lastAutoError = String(error?.message ?? error).slice(0, 200) })
+    })
+  }
+
   /** 渐进扫描：子项一完成就上屏；同一时间只跑一个，后到的请求排队换根。 */
   const beginScan = (root, reason = 'refresh', { keep = false } = {}) => {
     if (running) { queued = root; queuedReason = reason; queuedKeep = keep; return running }
@@ -51,13 +86,15 @@ export function apply(ctx, config) {
     )
       .then((result) => {
         if (keep) for (const item of result.entries) store.addEntry(item)
-        return store.finishScan({
+        const next = store.finishScan({
           partial: result.partial,
           scannedAt: result.scannedAt,
           patterns: result.patterns,
           patternsTruncated: result.patternsTruncated,
           reason,
         })
+        if (reason === 'refresh' || reason === 'schedule') autoAnnotate(store.pendingSemantics(50).length)
+        return next
       })
       .catch(() => store.finishScan({ partial: true, scannedAt: Date.now(), reason }))
       .finally(() => {
@@ -169,7 +206,7 @@ export function apply(ctx, config) {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
             if (!store.state.root && !running) openRoot(HOME, 'boot')
-            json(res, 200, store.snapshot())
+            json(res, 200, { ...store.snapshot(), auto: { bound: Boolean(boundSession), lastAt: lastAutoAt, enabled: store.state.config?.autoAnnotate !== false, error: lastAutoError } })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
@@ -239,6 +276,7 @@ export function apply(ctx, config) {
               store.setConfig({ autoScanHours: body.autoScanHours })
               scheduleAuto()
             }
+            if (body.autoAnnotate !== undefined) store.setConfig({ autoAnnotate: Boolean(body.autoAnnotate) })
             json(res, 200, store.snapshot())
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
@@ -339,6 +377,21 @@ export function apply(ctx, config) {
             const results = await executeMoves(ops)
             if (results.length > 0 && results.every((r) => r.ok)) store.dropMoveBatch(batch.id)
             json(res, 200, { batch: batch.id, results, state: store.snapshot() })
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.bind,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const body = await readJson(req)
+            if (typeof body.sessionId === 'string' && body.sessionId !== '') boundSession = body.sessionId
+            json(res, 200, { ok: true, bound: Boolean(boundSession) })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }
