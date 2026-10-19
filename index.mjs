@@ -46,15 +46,31 @@ export function apply(ctx, config) {
    * 自动补语义：扫描完成后，把一条「该标注了」的消息投递回当前会话。
    * 只在用户主动扫描（refresh / schedule）之后触发，有冷却，避免把会话刷成流水账。
    */
-  let boundSession = null
+  /**
+   * 每个打开过画布的会话都记一笔（sessionId → {preset, at}）。
+   * 自动补语义只挑「最近一次、且跑的是 disk-cleanup」的那个——多开会话时不能听最后一个 bind。
+   */
+  const bindings = new Map()
   let lastAutoAt = 0
+  let lastAutoScannedAt = 0
   let lastAutoError = ''
-  const AUTO_COOLDOWN_MS = 5 * 60 * 1000
 
-  const autoAnnotate = (pending) => {
-    if (!boundSession || store.state.config?.autoAnnotate === false) return
+  const autoAnnotate = (pending, scannedAt) => {
+    if (store.state.config?.autoAnnotate === false) return
     if (pending === 0) return
-    if (Date.now() - lastAutoAt < AUTO_COOLDOWN_MS) return
+    // 同一次扫描只触发一次：重复的 state 轮询 / 重复进入都不会再唤醒
+    if (scannedAt === lastAutoScannedAt) return
+    const candidates = [...bindings.entries()]
+      .filter(([, info]) => info.preset === 'disk-cleanup')
+      .sort((a, b) => a[1].at - b[1].at)
+    const target = candidates.at(-1)
+    if (!target) {
+      // 只有「磁盘整理」这个 preset 里才有 disk_canvas_* 工具；投进别的会话只会让 Agent 干瞪眼
+      lastAutoError = bindings.size === 0 ? 'no session bound' : 'no disk-cleanup session bound'
+      return
+    }
+    const [sessionId] = target
+    lastAutoScannedAt = scannedAt
     lastAutoAt = Date.now()
     const text = [
       `磁盘扫描完成：${store.state.root}（${store.state.entries.length} 项）。`,
@@ -68,7 +84,7 @@ export function apply(ctx, config) {
       if (!commands?.prompt) { lastAutoError = 'sessionController.commands unavailable'; return }
       Promise.resolve(commands.prompt({
         requestId: randomUUID(),
-        sessionId: boundSession,
+        sessionId,
         mode: 'queue',
         content: [{ type: 'text', text }],
       }, { kind: 'disk-canvas' })).then(() => { lastAutoError = '' })
@@ -93,7 +109,7 @@ export function apply(ctx, config) {
           patternsTruncated: result.patternsTruncated,
           reason,
         })
-        if (reason === 'refresh' || reason === 'schedule') autoAnnotate(store.pendingSemantics(50).length)
+        if (reason === 'refresh' || reason === 'schedule') autoAnnotate(store.pendingSemantics(50).length, result.scannedAt)
         return next
       })
       .catch(() => store.finishScan({ partial: true, scannedAt: Date.now(), reason }))
@@ -206,7 +222,13 @@ export function apply(ctx, config) {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
             if (!store.state.root && !running) openRoot(HOME, 'boot')
-            json(res, 200, { ...store.snapshot(), auto: { bound: Boolean(boundSession), lastAt: lastAutoAt, enabled: store.state.config?.autoAnnotate !== false, error: lastAutoError } })
+            json(res, 200, { ...store.snapshot(), auto: {
+              bound: bindings.size > 0,
+              sessions: [...bindings.entries()].map(([id, info]) => ({ id, preset: info.preset, at: info.at })),
+              lastAt: lastAutoAt,
+              enabled: store.state.config?.autoAnnotate !== false,
+              error: lastAutoError,
+            } })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
@@ -390,8 +412,14 @@ export function apply(ctx, config) {
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
             if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
             const body = await readJson(req)
-            if (typeof body.sessionId === 'string' && body.sessionId !== '') boundSession = body.sessionId
-            json(res, 200, { ok: true, bound: Boolean(boundSession) })
+            if (typeof body.sessionId === 'string' && body.sessionId !== '') {
+              const preset = typeof body.preset === 'string' ? body.preset : null
+              bindings.set(body.sessionId, { preset, at: Date.now() })
+              // 绑定变化（比如刚切到磁盘整理模式）允许对新目标重新触发一次
+              lastAutoScannedAt = 0
+              lastAutoError = ''
+            }
+            json(res, 200, { ok: true, bound: bindings.size > 0 })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }

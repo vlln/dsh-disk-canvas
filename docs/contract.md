@@ -213,15 +213,17 @@ Agent 可以对「人已经做过的决定」写一句异议：
 
 ## 2.14 自动补语义
 
-- 画布打开时 `POST /bind { sessionId }` 把当前会话告诉宿主（`boundSession`）。
+- 画布打开时 `POST /bind { sessionId, preset }` 把当前会话和它跑的 preset 告诉宿主；多开会话时按 sessionId 记一份。
 - 用户主动扫描（`reason = refresh | schedule`）完成后，若有 `pending` 项（没语义或已过期），
   宿主往这个会话投递一条 user 消息（source kind `disk-canvas`）：
 
   > 磁盘扫描完成：/Users/me（76 项）。其中 12 项还没有语义。请用 disk_canvas_state 读取 pending，
   > 挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；不要替用户做决定，也不要一次标太多。
 
-- 保护：5 分钟冷却；只在 refresh / schedule 后触发（`agent` / `navigate` / `boot` 不触发，避免自激）；
-  `config.autoAnnotate === false` 关闭。`state.auto` 暴露 `{bound, lastAt, enabled, error}` 便于诊断。
+- 保护：同一次扫描只触发一次（按 `scannedAt` 去重）；只在 refresh / schedule 后触发
+  （`agent` / `navigate` / `boot` 不触发，避免自激）；**只投给 preset 为 `disk-cleanup` 的会话**
+  （别的 preset 里没有 `disk_canvas_*` 工具，投过去只会让 Agent 干瞪眼）；`config.autoAnnotate === false` 关闭。
+  `state.auto` 暴露 `{bound, sessions, lastAt, enabled, error}` 便于诊断。
 - 走的是 `sessionController.commands.prompt(request, source)`——Remote 那层会把 source 固定成 `user`，
   宿主内部可以用自己的 kind，会话日志里能区分「这是画布让我做的」。
 

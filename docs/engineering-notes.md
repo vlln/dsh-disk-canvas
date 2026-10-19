@@ -564,3 +564,20 @@ Agent 原来只能逐条写语义，不能给选项。这轮补上「提案」�
 - 验证：绑定真实 session → refresh 扫描 → `state.auto.error === ''`，会话日志里出现
   「磁盘扫描完成：/private/tmp/dc-fixture（6 项）。其中 2 项还没有语义…」。
 - 还没做「边扫边标」：`disk_canvas_scan` 仍然是等扫描完成才返回；要并发得先给工具加 `wait:false`。
+
+
+## 2026-10-19 · 1.10.1 / 1.10.2 自动触发没生效的两个真原因
+
+用户实测：扫了一次但 Agent 没动。查了 live 实例的会话日志与 `state.auto`：
+
+1. **消息投给了标准模式的会话**：所有 live 会话的 `agentPreset` 都是 `standard`，那条「该补语义了」进去后，
+   Agent 找不到 `disk_canvas_*` 工具，只能告诉用户「工具不存在」——还发生在他没看的会话里。
+2. **第二扫描被 5 分钟冷却吞了**：第一次（投给 Downloads 会话）成功，第二次 user 主动重扫时 `lastAutoAt` 还在冷却窗口内。
+
+修法：
+- 绑定改为 `sessionId → {preset, at}` 的映射，自动触发只挑「最近一次、且 preset 是 disk-cleanup」的会话；
+  没有就记 `no disk-cleanup session bound`，不发消息。
+- 冷却改成**按 `scannedAt` 去重**：每次新扫描都能触发一次，重复轮询不会。
+- 画布把会话的 preset 一起 bind；不是 disk-cleanup 时，冷启动提示改成「切到该模式后扫描一次即可」。
+
+验证：绑 standard → `auto.error = session preset is standard...`，不发；绑 disk-cleanup → 消息进会话日志。
