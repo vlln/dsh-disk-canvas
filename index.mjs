@@ -193,6 +193,7 @@ export function apply(ctx, config) {
             const body = await readJson(req)
             if (body.rememberRule) store.setRule({ id: body.rememberRule.id, decision: body.rememberRule.decision })
             if (body.forgetRule) store.setRule({ id: body.forgetRule, decision: null })
+            if (Array.isArray(body.rules)) store.replaceRules(body.rules)
             if (body.autoScanHours !== undefined) {
               store.setConfig({ autoScanHours: body.autoScanHours })
               scheduleAuto()

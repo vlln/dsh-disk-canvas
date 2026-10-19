@@ -121,6 +121,22 @@
 - 导出计划里 `extra.{delete,keep,unsure}` 是「索引里、不在当前层」的那些决定，
   避免批量标了 72 个 node_modules 却导不出来。
 
+## 2.8 导出物
+
+| 产物 | 内容 | 用途 |
+|---|---|---|
+| `disk-canvas-list.md` | 汇总 + 按决定分组的三张表（+ 「索引里的其他层」一节） | 给人看、贴 issue |
+| `disk-cleanup.sh` | 待清理项列表 + `move()` 函数；默认演练，`--yes` 才执行 | 交给用户自己跑 |
+| `disk-canvas-plan.json` | 完整计划（含 `extra`） | 给脚本/其它工具 |
+
+脚本的语义（刻意保守）：
+
+- **只移动，不删除**：`mv -- "$p" "$QUARANTINE/NNN-basename"`，隔离区在 `$HOME/.Trash/dsh-disk-canvas-<ts>/`；
+- **默认演练**：`DRY=1`，只有第一个参数是 `--yes` 才真正执行；
+- 不存在的路径打印 `skip (gone)`；`/` 与 `$HOME` 打印 `refuse` 并跳过；
+- 路径用单引号包裹并转义（`'` → `'\''`），带空格的路径安全；
+- 生成时跳过含换行的路径（不生成不可读的脚本）。
+
 ## 3. 计划
 
 ```jsonc
@@ -143,7 +159,7 @@
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path }` 扫描一个目录（默认主目录） |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
-| POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }`，返回完整快照 |
+| POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。
