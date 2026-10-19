@@ -155,6 +155,7 @@ export function apply(ctx, config) {
     history: (root, limit) => ledger.history(root ?? store.state.root ?? HOME, limit),
     setClaim: (args) => store.setClaim(args),
     markPaths: (args) => store.markPaths(args),
+    setObjection: (args) => store.setObjection(args),
   }), 'disk-canvas: api service')
 
   ctx.effect(() => {
@@ -401,6 +402,28 @@ function registerTools(ctx, api) {
         execute: async (args) => {
           const saved = api.markPaths(args)
           return { ok: true, batch: saved.id, count: saved.count, skipped: saved.skipped, bytes: saved.bytes }
+        },
+      })),
+      ctx.tools.register(defineTool({
+        name: 'disk_canvas_object',
+        description:
+          '对你不同意的、用户已经做过的决定写一句异议。只写说明，绝不改决定；用户改了决定，异议自动失效。' +
+          '没有具体理由就不要写——空洞的反对会稀释真正重要的那些。',
+        parameters: {
+          path: { type: 'string', required: true, description: '绝对路径' },
+          note: { type: 'string', required: true, description: '为什么不同意，一句话说清依据' },
+        },
+        output: {
+          schema: {
+            type: 'object',
+            properties: { ok: { type: 'boolean' }, path: { type: 'string' }, note: { type: 'string' } },
+            additionalProperties: true,
+          },
+          render: (_args, value) => [{ type: 'text', text: `已记录异议：${value.path} — ${value.note}` }],
+        },
+        execute: async (args) => {
+          const saved = api.setObjection(args)
+          return { ok: true, path: args.path, note: saved.note }
         },
       })),
       ctx.tools.register(defineTool({
