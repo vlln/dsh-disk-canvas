@@ -1,6 +1,6 @@
 # 交互契约（v0）
 
-这份文件是 `dsh-disk-canvas` 对外的稳定面：画布数据、批注、计划、以及「不做什么」的边界。
+这份文件是 `dsh-pancha` 对外的稳定面：画布数据、批注、计划、以及「不做什么」的边界。
 改这里的任何一条都要带一次真实装载的验证记录。
 
 ## 1. 对象
@@ -36,7 +36,7 @@
 
 ## 1.5 账本（持久）
 
-扫描快照、决定、标注都存在 `$DSH_HOME/data/dsh-disk-canvas/ledger.json`（原子写，debounce 800ms，
+扫描快照、决定、标注都存在 `$DSH_HOME/data/dsh-pancha/ledger.json`（原子写，debounce 800ms，
 进程退出前 flush）。形状：
 
 ```jsonc
@@ -137,7 +137,7 @@ Agent 可以对「人已经做过的决定」写一句异议：
 
 ## 2.14 自动补语义
 
-- 画布打开时 `POST /bind { sessionId, preset }` 把当前会话和它跑的 preset 告诉宿主；多开会话时按 sessionId 记一份。
+- 盘查打开时 `POST /bind { sessionId }` 把当前绑定的会话告诉宿主；多开会话时按 sessionId 记一份。
 - **每次扫描结束**（`reason != agent`）后，若有 `pending` 项（没语义或已过期），
   宿主往这个会话投递一条 user 消息（source kind `disk-canvas`）：
 
@@ -145,8 +145,7 @@ Agent 可以对「人已经做过的决定」写一句异议：
   > 挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；不要替用户做决定，也不要一次标太多。
 
 - 保护：同一次扫描只触发一次（按 `scannedAt` 去重）；`agent` 触发的扫描不触发（避免自激）；
-  **只投给 preset 为 `disk-cleanup` 的会话**
-  （别的 preset 里没有 `disk_canvas_*` 工具，投过去只会让 Agent 干瞪眼）；`config.autoAnnotate === false` 关闭。
+  只投给画布页面绑定的那个会话（最近一次 bind）。
   `state.auto` 暴露 `{bound, sessions, lastAt, enabled, error}` 便于诊断。
 - 走的是 `sessionController.commands.prompt(request, source)`——Remote 那层会把 source 固定成 `user`，
   宿主内部可以用自己的 kind，会话日志里能区分「这是画布让我做的」。
@@ -168,22 +167,22 @@ Agent 可以对「人已经做过的决定」写一句异议：
 
 | 方法 | 路径 | 作用 |
 |---|---|---|
-| GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
-| GET | `/plugins/dsh-disk-canvas/execute/preview` | 清理预览：待清理项 → 废纸篓，逐项冲突检查 |
-| POST | `/plugins/dsh-disk-canvas/execute` | 执行清理：移到 `~/.Trash`；TCC 拒绝（EPERM）时退到 `$DSH_HOME/trash/<ts>`，记成可撤销批次 |
-| POST | `/plugins/dsh-disk-canvas/ask` | 让绑定的 disk-cleanup 会话按已有语义提一批清理候选（Agent 自己 mark） |
-| POST | `/plugins/dsh-disk-canvas/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
-| POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
-| POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
+| GET | `/plugins/dsh-pancha/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
+| GET | `/plugins/dsh-pancha/execute/preview` | 清理预览：待清理项 → 废纸篓，逐项冲突检查 |
+| POST | `/plugins/dsh-pancha/execute` | 执行清理：移到 `~/.Trash`；TCC 拒绝（EPERM）时退到 `$DSH_HOME/trash/<ts>`，记成可撤销批次 |
+| POST | `/plugins/dsh-pancha/ask` | 让绑定的会话按已有语义提一批清理候选（Agent 自己 mark） |
+| POST | `/plugins/dsh-pancha/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
+| POST | `/plugins/dsh-pancha/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
+| POST | `/plugins/dsh-pancha/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。
 
 ## 5. 入口与归属
 
-- **画布**是会话页签（`conversation.view`，id `dsh-disk-canvas`），任何模式都能打开；
-- **工具**只挂在 `磁盘整理` preset（`preset-disk-cleanup`）里：preset 子行以 `mode: tools` 挂同一份包，
-  通过宿主提供的 `dsh-disk-canvas.api` 服务读写同一份状态。标准 / PTC / 极简模式看不到 `disk_canvas_*`；
-- 宿主行（`mode: host`）负责扫描、路由与状态，无论用哪个模式都在跑。
+- **盘查**是侧边栏整页（`main` 槽位，key `pancha-home`），不依赖会话页签；
+- **工具**挂在 profile 顶层的 `mode: tools` 行，默认会话即可用，通过宿主提供的 `dsh-pancha.api` 服务读写同一份状态；
+- 宿主行（`mode: host`）负责扫描、路由与状态；
+- 约束（只分析、标注、预览，不改文件）来自每条投递消息里的提示词，是**软约束**——没有工具级隔离。
 
 ## 6. Agent 工具
 
@@ -194,9 +193,7 @@ POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB
 | `disk_canvas_claim` | 给某路径写语义（覆盖旧语义），**不执行删除** |
 | `disk_canvas_history` | 读账本历史（最多 20 条）与最近一次增量 |
 
-这些工具都只在「磁盘整理」preset 内可见；该 preset 另外挂官方只读文件行：
-`@deepseek-ai/dsh-tool-fs`（`write:false` / `edit:false`，留 read / read_image）与
-`@deepseek-ai/dsh-tool-fs-search`（glob / grep）。没有 shell、没有写/删工具。
+这些工具挂在默认会话里；默认会话本身还有官方文件/命令工具（**没有工具级隔离**）。
 
 ## 7. 不做（v0 明确边界）
 

@@ -1,12 +1,12 @@
-# dsh-disk-canvas bundle patch：宿主（画布 + 路由）与工具。
+# dsh-pancha bundle patch：宿主（画布 + 路由）与工具。
 # 同一份包挂两次：mode=host 提供 API 服务与只读路由；mode=tools 把 disk_canvas_* 挂进默认会话。
 # 不再有专用 preset：Agent 的约束来自投递消息里的提示词（软约束），换取装配上的简单。
 - insert:
-    - id: dsh-disk-canvas
-      name: dsh-disk-canvas
+    - id: dsh-pancha
+      name: dsh-pancha
       config:
         mode: host
     - id: disk-canvas-tools
-      name: dsh-disk-canvas
+      name: dsh-pancha
       config:
         mode: tools

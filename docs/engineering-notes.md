@@ -3,14 +3,14 @@
 ## 2026-10-18 · v0 真实装载与浏览器验收（dsh 0.2.1-rc.1）
 
 隔离环境：`DSH_HOME=/tmp/dsh-canvas-verify`，pnpm store/cache 也在 `/tmp`，不碰共享 profile。
-安装：`dsh plugin --profile web add ./dsh-disk-canvas-0.1.0.tgz`（tarball 进 profile 树，避免本地目录装在树外）。
+安装：`dsh plugin --profile web add ./dsh-pancha-0.1.0.tgz`（tarball 进 profile 树，避免本地目录装在树外）。
 
 ### 服务端
 
-- `--dump-config` 末尾出现 `- id: dsh-disk-canvas`；条目无 `Config`，不声明设置命名空间。
+- `--dump-config` 末尾出现 `- id: dsh-pancha`；条目无 `Config`，不声明设置命名空间。
 - 启动 `dsh web --port 0 --no-open`：日志只有 URL，**无** `entry did not activate`。
 - HTTP（带 token cookie）：
-  - `POST /plugins/dsh-disk-canvas/scan {"path":"/tmp/dsh-fixture"}` → 3 项，体积 300000 / 120000 / 90000；
+  - `POST /plugins/dsh-pancha/scan {"path":"/tmp/dsh-fixture"}` → 3 项，体积 300000 / 120000 / 90000；
   - `POST .../annotate {"path":"…/tmp.log","decision":"delete","note":"测试批注"}` → plan
     `{deleteCount:1, reclaimBytes:90000}`；`GET .../plan` 导出含 risk / claim / note；
   - 跨源 POST（`Origin: http://evil.example`）→ **403**。
@@ -19,8 +19,8 @@
   - 改为**按子项切分**（40 万条目 / 20 s 每子项，全局 60 s）→ 直接跑 `scanChildren(HOME)`
     **14 s、146 GB、76 项、仅 1 个目录 partial**；
   - UI 里渐进上屏：2.5 s 时 5.8 GB / 60 项（`Scanning…`），18 s 时 136 GB / 76 项。
-- client half：boot HTML 的 `__DSH_BOOT__` 含 `dsh-disk-canvas/client.js`；组合 bundle
-  `GET /plugins/??…dsh-disk-canvas/client.js…` → 200、含本插件 id 与样式。
+- client half：boot HTML 的 `__DSH_BOOT__` 含 `dsh-pancha/client.js`；组合 bundle
+  `GET /plugins/??…dsh-pancha/client.js…` → 200、含本插件 id 与样式。
 - 单元测试：`npm test`（9 项）覆盖规则分档、计划累计、批注清除、Agent 覆盖、递归体积、渐进状态。
 
 ### 浏览器（headless Chrome + CDP，1440×900）
@@ -43,12 +43,12 @@
 ### 2026-10-18 第二轮（preset / 页签 / 配色）
 
 - **preset 随身分发**：patch 里新增 `preset-disk-cleanup`（`@deepseek-ai/dsh-agent-preset`），子行
-  `dsh-disk-canvas` + `mode: tools`；宿主行 `mode: host` 提供 `dsh-disk-canvas.api` 服务与路由。
+  `dsh-pancha` + `mode: tools`；宿主行 `mode: host` 提供 `dsh-pancha.api` 服务与路由。
   实测启动无告警；`--dump-config` 里行与子行齐全；模式选择器出现「磁盘整理」（截图确认）。
   踩坑：Cordis 的 `inject` **不支持** `{required, optional}` 写法（会被当成两个服务名），
   可选依赖要用 `ctx.reflect.get(name)` 读取。
-- **入口改会话页签**：`conversation.view` 槽（id `dsh-disk-canvas`，order 20），删除 sidebar/main 注册。
-  实测 `ctx.slots.entries('conversation.view')` = `[chat, trajectory, dsh-disk-canvas]`；
+- **入口改会话页签**：`conversation.view` 槽（id `dsh-pancha`，order 20），删除 sidebar/main 注册。
+  实测 `ctx.slots.entries('conversation.view')` = `[chat, trajectory, dsh-pancha]`；
   页签栏只在非空白会话渲染（`showTabs = tabs.length > 1`），空白首页看不到，发首条消息后出现。
 - **配色重做**：新增 `personal`（个人内容，蓝）档，`high` 只留给系统级路径；`unknown` 用中性灰；
   画布底色改 layer-2、方块加 1px 分隔、加五色图例；修正字号/对比与「1 items」单复数。
@@ -56,7 +56,7 @@
 
 ### 2026-10-18 第三轮（账本 / UX / preset 只读工具）
 
-- **持久化**：新增 `lib/src/ledger.mjs`，`$DSH_HOME/data/dsh-disk-canvas/ledger.json`，原子写、
+- **持久化**：新增 `lib/src/ledger.mjs`，`$DSH_HOME/data/dsh-pancha/ledger.json`，原子写、
   800ms debounce、退出 flush；每根目录 20 条 / 90 天 / ≤5MB，只存顶层聚合；标注与 claims 全局
   （按绝对路径），`by: human|agent`。启动时 `ledger.latest(HOME)` → `store.hydrate`，画布秒开。
   实测：扫描 76 项 → 账本 8346 B；标 `/Users/vlln/Project` 为 keep → 账本出现 annotations；
@@ -199,7 +199,7 @@
   导入是**整体替换**：先收回所有 `by: rule` 的标注与旧规则，再按新列表补 —— 实测把规则从
   `node_modules→delete` 换成 `caches→delete + logs→unsure` 后，旧的规则标注全部消失。
 - **清理脚本**（第一次给执行面，仍然不删）：
-  - `mv` 到 `~/.Trash/dsh-disk-canvas-<ts>/NNN-name`，可逆；
+  - `mv` 到 `~/.Trash/dsh-pancha-<ts>/NNN-name`，可逆；
   - 默认 `DRY=1`，`--yes` 才动；不存在的路径跳过；`/` 与 `$HOME` 拒绝；
   - 实测：干净脚本 `sh -n` 通过、演练打印 74 项（2 个当前层 + 72 个索引层）、
     在临时目录上跑 `--yes` 真的移动到隔离区而不是删除；
@@ -273,9 +273,9 @@
 npm test
 npm_config_cache=/tmp/npm-cache npm pack
 DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_store_dir=/tmp/pnpm-store \
-  dsh plugin --profile web remove dsh-disk-canvas
+  dsh plugin --profile web remove dsh-pancha
 DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_store_dir=/tmp/pnpm-store \
-  dsh plugin --profile web add ./dsh-disk-canvas-0.2.0.tgz
+  dsh plugin --profile web add ./dsh-pancha-0.2.0.tgz
 ```
 
 改 client bundle 需要重启 web（`__DSH_BOOT__` 的 bundle 表在启动时组合）。
@@ -316,7 +316,7 @@ DSH_HOME=/tmp/dsh-canvas-verify npm_config_cache=/tmp/pnpm-cache npm_config_stor
 - 隔离站：`DSH_HOME=/tmp/dsh-canvas-verify`，`dsh plugin --profile web add` 安装 1.1.0 tarball，
   `dsh web --port 0` 启动无告警。`GET /state` 正常；`POST /scan {"path":"/tmp/dc-fixture"}` 正常；
   条目里已没有 `risk`，未标注项 `semantic: null`。
-- 客户端 bundle：从 `__DSH_BOOT__` 取 `plugins/??dsh-disk-canvas/client.js&rev=…` → 200 / 128 KB，
+- 客户端 bundle：从 `__DSH_BOOT__` 取 `plugins/??dsh-pancha/client.js&rev=…` → 200 / 128 KB，
   含 `dc-facet`、`labeledNote`、`semantic` 标记，说明新代码真的进了 bundle（不是旧包）。
 
 ### 浏览器视觉验收（同一轮补上）
@@ -750,3 +750,12 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - 上下文前缀（`[磁盘画布] …`）用 `\n\n---\n\n` 与用户话分隔，`/transcript` 只显示分隔符之后的部分，
   所以记录里看不到提示词。
 - `/transcript` 额外返回 `running`，前端据此显示打字指示。
+
+
+## 2026-10-21 · 2.0.0 改名「盘查」+ 去页签
+
+- 包名/插件 id/服务名/路由前缀/账本目录统一改为 `dsh-pancha`；`$DSH_HOME/data/dsh-disk-canvas`
+  自动认领到 `data/dsh-pancha`（rename，失败则 copy）。
+- 删掉 `conversation.view` 页签：盘查现在是侧边栏整页（`main` + `sidebar.panellist`）。
+- 对话入口从页头移到画布工具栏（「对话」按钮，chat 图标），同时保留页头按钮。
+- 版本跳到 2.0.0，因为包名与数据目录都变了。

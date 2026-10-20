@@ -1,10 +1,10 @@
-// dsh-disk-canvas Node half：只读扫描 + 规则/Agent 标注 + 人的决定。
+// dsh-pancha Node half：只读扫描 + 规则/Agent 标注 + 人的决定。
 // 同一份包挂两个模式：
-//   mode=host  —— 提供 dsh-disk-canvas.api 服务 + 只读/批注路由（画布数据面）；
+//   mode=host  —— 提供 dsh-pancha.api 服务 + 只读/批注路由（画布数据面）；
 //   mode=tools —— preset 子行，只注册 disk_canvas_* 工具，工具只对该 preset 的 Agent 可见。
 // v0 不提供任何删除或移动动作——执行面在确认清单之后，且本版本刻意留空。
 import { stat } from 'node:fs/promises'
-import { mkdirSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -15,7 +15,7 @@ import { PATHS } from './lib/src/routes.mjs'
 import { json, readJson, isCrossOrigin } from './lib/src/http.mjs'
 import { previewMoves, executeMoves } from './lib/src/organize.mjs'
 
-export const name = 'dsh-disk-canvas'
+export const name = 'dsh-pancha'
 /** 两种模式都要 tools（tools 模式注册工具、宿主模式不注册）；webServer 用于宿主路由。 */
 export const inject = ['tools', 'webServer']
 
@@ -29,13 +29,20 @@ const SCAN_REASONS = new Set(['navigate', 'refresh', 'schedule', 'agent', 'boot'
 export function apply(ctx, config) {
   const mode = config?.mode === 'tools' ? 'tools' : 'host'
   if (mode === 'tools') {
-    // 宿主行可能比 preset 先/后激活：等 dsh-disk-canvas.api 出现再挂工具。
-    ctx.inject(['dsh-disk-canvas.api'], (scope) => {
-      registerTools(scope, scope['dsh-disk-canvas.api'])
+    // 宿主行可能比 preset 先/后激活：等 dsh-pancha.api 出现再挂工具。
+    ctx.inject(['dsh-pancha.api'], (scope) => {
+      registerTools(scope, scope['dsh-pancha.api'])
     })
     return
   }
 
+  // 改名迁移：旧的 data/dsh-disk-canvas 直接认领到 data/dsh-pancha，别让用户丢账本
+  const dataHome = process.env.DSH_HOME ?? process.cwd()
+  const oldData = join(dataHome, 'data', 'dsh-disk-canvas')
+  const newData = join(dataHome, 'data', 'dsh-pancha')
+  if (!existsSync(newData) && existsSync(oldData)) {
+    try { renameSync(oldData, newData) } catch { try { cpSync(oldData, newData, { recursive: true }) } catch { /* 迁移失败就从空账本开始 */ } }
+  }
   const ledger = createLedger()
   const store = createStore({ ledger })
   store.hydrate(ledger.latest(HOME))
@@ -252,7 +259,7 @@ export function apply(ctx, config) {
   }
 
   // 画布数据面的唯一入口：preset 里的工具通过这个服务读写同一份状态。
-  ctx.effect(() => ctx.provide('dsh-disk-canvas.api', {
+  ctx.effect(() => ctx.provide('dsh-pancha.api', {
     scanAndWait,
     summarize,
     root: () => store.state.root ?? HOME,

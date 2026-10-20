@@ -1,8 +1,8 @@
 {
-  "name": "dsh-disk-canvas",
-  "version": "1.22.1",
+  "name": "dsh-pancha",
+  "version": "2.0.1",
   "type": "module",
-  "description": "把磁盘扫成一张可批注的提案：Agent 标注、你来决定、删前可预览（DeepSeek Harness 插件）",
+  "description": "盘查 · 把磁盘变成一张可审查、可批注、可执行的盘面（dsh 插件）",
   "main": "./index.mjs",
   "icon": "./icon.svg",
   "exports": {
@@ -42,6 +42,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vlln/dsh-disk-canvas.git"
-  }
+    "url": "git+https://github.com/vlln/dsh-pancha.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vlln/dsh-pancha/issues"
+  },
+  "homepage": "https://github.com/vlln/dsh-pancha#readme"
 }
