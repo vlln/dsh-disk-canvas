@@ -173,7 +173,6 @@ test('store: 记忆规则自动标记新扫到的同类目录，且不覆盖人�
   assert.equal(snap.annotations['/tmp/rule/x/node_modules'].decision, 'delete', '规则应立刻作用到已加载的索引')
   assert.equal(snap.annotations['/tmp/rule/x/node_modules'].by, 'rule')
   assert.equal(snap.rules.length, 1)
-  assert.equal(store.exportPlan().extra.counts.delete, 2, '导出要带上索引里的决定')
 
   // 人工改成保留后，再扫描也不会被规则覆盖
   store.annotate({ path: '/tmp/rule/x/node_modules', decision: 'keep' })

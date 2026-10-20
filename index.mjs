@@ -114,9 +114,22 @@ export function apply(ctx, config) {
   const beginScan = (root, reason = 'refresh', { keep = false } = {}) => {
     if (running) { queued = root; queuedReason = reason; queuedKeep = keep; return running }
     store.startScan(root, { keep })
+    let early = false
+    const onChild = (item) => {
+      store.addEntry(item)
+      // 扫描可能很久：先让 Agent 对已经出来的部分动手，别等全部扫完
+      if (!early && reason !== 'agent' && store.state.entries.length >= 6 && store.pendingSemantics(50).length > 0) {
+        early = true
+        askAgent([
+          `磁盘扫描进行中：已经读到 ${store.state.entries.length} 项（还会继续）。`,
+          '可以先用 disk_canvas_state { wait:false } 看当前结果，给最有把握的项写语义；',
+          '不要等扫描结束，也不要一次标太多。',
+        ].join('')).catch(() => { /* 没绑定会话就等扫完再发 */ })
+      }
+    }
     running = scanChildren(
       root,
-      keep ? undefined : (item) => store.addEntry(item),
+      keep ? undefined : onChild,
     )
       .then((result) => {
         if (keep) for (const item of result.entries) store.addEntry(item)
@@ -215,6 +228,8 @@ export function apply(ctx, config) {
         source: e.source,
         semantic: e.semantic ?? null,
         decision: snap.annotations[e.path]?.decision ?? null,
+        // 人的备注：解释「为什么这样判断」，Agent 应当读它
+        note: snap.annotations[e.path]?.note ?? null,
         deltaBytes: e.deltaBytes ?? null,
       })),
     }
@@ -500,19 +515,6 @@ export function apply(ctx, config) {
           }
         },
       }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.plan,
-        handler: async (req, res) => {
-          try {
-            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            if (!store.state.root && !running) openRoot(HOME, 'boot')
-            json(res, 200, store.exportPlan())
-          } catch (error) {
-            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
     ]
     return () => { for (const dispose of disposers) dispose() }
   }, 'disk-canvas: routes')
@@ -554,7 +556,9 @@ function registerTools(ctx, api) {
       ctx.tools.register(defineTool({
         name: 'disk_canvas_state',
         description: '读取当前画布状态：扫描根、清理计划（人已标注的决定）与体积最大的若干项。用于在对话里解释或修改提案。',
-        parameters: {},
+        parameters: {
+          wait: { type: 'boolean', description: 'false = 立即返回当前结果（扫描进行中也行），默认等扫描完成' },
+        },
         output: {
           schema: {
             type: 'object',
@@ -567,8 +571,8 @@ function registerTools(ctx, api) {
           },
           render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
         },
-        execute: async () => {
-          await api.scanAndWait()
+        execute: async (args) => {
+          if (args.wait !== false) await api.scanAndWait()
           return lossless(api.summarize(TOP_LIMIT))
         },
       })),

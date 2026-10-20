@@ -644,3 +644,20 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - **颜色**：`--dc-facet-fill` 8% → 18%，去掉色条后仍能看出类别。
 - **色号迁移 bug**：`facetHue` 里旧的自由类别键占满了 0–7，规范键全被记成 -1，导致所有方块无色。
   现在加载时只保留封闭词表里的键，`-1` 不再被当作有效分配，有空格就重新给。
+
+
+## 2026-10-19 · 1.14.0 六项修正
+
+1. **扫描中提前触发**：`beginScan` 每完成一个子项就检查，条目 ≥6 且还有 pending 时，向绑定会话投一条
+   「扫描进行中，可以先用 `disk_canvas_state { wait:false }`」；`state` 工具新增 `wait` 参数。
+2. **备注对 Agent 可见**：`summarize()` 的条目里加了 `note`，人写的备注会随状态一起给模型。
+3. **依据溢出**：`.dc-agent-row` 加 `min-width:0` + `overflow-wrap:anywhere`，长路径不再撑出面板。
+4. **「只看 Agent 标的」无效**：筛选按 `annotations[].by === 'agent'`，但 chip 的显示条件用的是语义来源，
+   两者不一致；现在都以「Agent 做的决定」为准（实测 68 → 4）。
+5. **删掉导出**：按钮、菜单、`copyList` / `exportScript` / `buildMarkdown` / `buildScript`、`GET /plan`、
+   `store.exportPlan()` 一起删；执行清理改成按钮 + 预览 + 撤销。
+6. **待清理颜色丢失**：`.dc-rect[data-facet-i]` 在 `[data-decision="delete"]` 之后定义，同权重后来居上把红色盖掉；
+   把 delete 规则移到 facet 之后并加强到 24% 红底 + 2px 红框。
+
+又一次教训：删 `buildScript`–`Sparkline` 时把中间的 `ICONS` / `Icon` 一起删了（白屏，`Icon is not defined`）。
+按函数名切片必须确认两端顺序；这次改成「删到 `const ICONS` 之前」并用 `grep -c` 断言关键符号还在。

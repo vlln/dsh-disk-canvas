@@ -116,26 +116,6 @@
 当前没有设置界面。`POST /config` 仍接受 `{ autoScanHours }` 与 `{ autoAnnotate }`（API 用），
 记忆规则相关字段（`rememberRule` / `forgetRule` / `rules`）是历史接口，没有入口。
 
-## 2.8 导出物
-
-只有两个产物：清单（进剪贴板，不落文件）和清理脚本（唯一的执行通道）。
-
-| 产物 | 内容 | 用途 |
-|---|---|---|
-| 清单（Markdown） | 汇总 + 按决定分组的三张表（+ 「索引里的其他层」一节） | 复制进 issue / 聊天；**不落文件**，因为它一落盘就开始漂 |
-| `disk-cleanup.sh` | 待清理项列表 + `move()` 函数；默认演练，`--yes` 才执行 | 交给用户自己跑 |
-
-`GET /plan` 仍返回完整 JSON（给脚本与其它的工具用），但界面不再提供「导出 JSON」——
-它和 HTTP 面重复，留着只是多一个会过期的副本。提案快照（第 2.10 节）另算，它带的是决定与语义，不是体积。
-
-脚本的语义（刻意保守）：
-
-- **只移动，不删除**：`mv -- "$p" "$HOME/.Trash/<name>"`（同名加时间后缀），不再套插件自己的隔离目录；
-- **默认演练**：`DRY=1`，只有第一个参数是 `--yes` 才真正执行；
-- 不存在的路径打印 `skip (gone)`；`/` 与 `$HOME` 打印 `refuse` 并跳过；
-- 路径用单引号包裹并转义（`'` → `'\''`），带空格的路径安全；
-- 生成时跳过含换行的路径（不生成不可读的脚本）。
-
 ## 2.9 执行台账
 
 插件不维护隔离区。清理脚本只把待清理项 `mv` 到 `~/.Trash/`，自己不留清单。
@@ -234,7 +214,6 @@ Agent 可以对「人已经做过的决定」写一句异议：
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/index` | 标注索引：写过语义的目录，按类别分组、嵌套只留最上层 |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
-| GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。
 
