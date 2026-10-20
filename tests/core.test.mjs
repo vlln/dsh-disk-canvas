@@ -25,26 +25,26 @@ test('store: 标注决定后计划累计可释放体积', () => {
   assert.equal(snap.plan.deleteCount, 1)
   assert.equal(snap.plan.keepCount, 1)
   assert.equal(snap.plan.reclaimBytes, 100)
-  assert.equal(snap.plan.unreviewedCount, 0)
+  assert.equal(snap.plan.undecidedCount, 0)
   assert.equal(snap.annotations['/tmp/root/a'].note, '缓存')
 })
 
-test('store: 清除批注回到未审', () => {
+test('store: 清除批注回到未选择', () => {
   const store = createStore()
   scan(store, '/tmp/r', [{ path: '/tmp/r/x', name: 'x', kind: 'file', bytes: 1, files: 1, latestModified: 1 }])
   store.annotate({ path: '/tmp/r/x', decision: 'delete' })
   store.annotate({ path: '/tmp/r/x', decision: 'none' })
-  assert.equal(store.snapshot().plan.unreviewedCount, 1)
+  assert.equal(store.snapshot().plan.undecidedCount, 1)
 })
 
-test('store: 只写备注不改变决定，也不计入已审', () => {
+test('store: 只写备注不改变决定，也不计入已决定', () => {
   const store = createStore()
   scan(store, '/tmp/n', [{ path: '/tmp/n/x', name: 'x', kind: 'file', bytes: 1, files: 1, latestModified: 1 }])
   store.annotate({ path: '/tmp/n/x', note: '先记一笔' })
   let snap = store.snapshot()
   assert.equal(snap.annotations['/tmp/n/x'].note, '先记一笔')
   assert.equal(snap.annotations['/tmp/n/x'].decision, undefined)
-  assert.equal(snap.plan.unreviewedCount, 1)
+  assert.equal(snap.plan.undecidedCount, 1)
   assert.equal(snap.plan.deleteCount, 0)
 
   store.annotate({ path: '/tmp/n/x', decision: 'keep' })

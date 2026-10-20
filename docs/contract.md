@@ -71,7 +71,7 @@
 ```jsonc
 {
   "path": "/Users/me/Downloads/x.dmg",
-  "decision": "delete",                  // 省略 = 只改备注；keep | delete | unsure | none（none = 清除决定）
+  "decision": "delete",                  // 省略 = 只改备注；keep | delete | none（none = 清除决定）
   "note": "装完了，确认不是唯一备份"
 }
 ```
@@ -81,7 +81,7 @@
   框选后一次请求写十几个决定；返回的仍是完整 snapshot。
 - **`decision` 可以省略**：即「只写备注」。备注和决定相互独立——先记一笔、晚点再定，
   不会因为还没决定就写不进去；决定清空后备注仍在，两者都空才删掉这条批注。
-- 只有 `keep | delete | unsure` 计入「已审」；带备注但没决定的项仍算未审。
+- 只有 `keep | delete` 计入「已决定」；其余都是「未选择」（带备注但没决定也算）。
 - **批注不等于执行**：导出计划只是 JSON，本版本没有任何删除/移动接口。
 
 ## 2.5 扫描本身
@@ -131,7 +131,7 @@
 - **撤销**规则会删掉规则本身，同时把 `by: "rule"` 且 `rule` 匹配、且没被改过的标注一起收回。
 - **自动扫描** `autoScanHours` ∈ [0, 720]，0 = 关；宿主进程用 `setInterval` 按间隔重扫上一次的根，
   启动时若 `now - scannedAt` 超过间隔会补扫一次。dsh 不在运行就不会扫。
-- 导出计划里 `extra.{delete,keep,unsure}` 是「索引里、不在当前层」的那些决定，
+- 导出计划里 `extra.{delete,keep}` 是「索引里、不在当前层」的那些决定，
   避免批量标了 72 个 node_modules 却导不出来。
 
 ## 2.8 导出物
@@ -233,8 +233,7 @@ Agent 可以对「人已经做过的决定」写一句异议：
 {
   "deleteCount": 3,
   "keepCount": 1,
-  "unsureCount": 2,
-  "unreviewedCount": 12,
+  "undecidedCount": 12,
   "reclaimBytes": 1288490188,
   "keepBytes": 48318382080,
   "entries": 18
@@ -248,7 +247,7 @@ Agent 可以对「人已经做过的决定」写一句异议：
 | GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
-| GET | `/plugins/dsh-disk-canvas/patterns` | 跨层目录索引（含每条路径），只在打开「索引」视图时拉一次 |
+| GET | `/plugins/dsh-disk-canvas/index` | 标注索引：写过语义的目录，按类别分组、嵌套只留最上层 |
 | GET | `/plugins/dsh-disk-canvas/proposal` | 提案快照（决定 + 判断 + 规则） |
 | POST | `/plugins/dsh-disk-canvas/proposal` | 导入提案：只补缺，返回 `{decisions, claims, rules, skipped}` |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |

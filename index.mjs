@@ -274,12 +274,11 @@ export function apply(ctx, config) {
       }),
       ctx.webServer.register({
         kind: 'exact',
-        path: PATHS.patterns,
+        path: PATHS.index,
         handler: async (req, res) => {
           try {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            json(res, 200, store.patterns())
+            json(res, 200, { groups: store.labeledIndex() })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
