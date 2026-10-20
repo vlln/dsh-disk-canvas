@@ -321,18 +321,6 @@ export function apply(ctx, config) {
       }),
       ctx.webServer.register({
         kind: 'exact',
-        path: PATHS.index,
-        handler: async (req, res) => {
-          try {
-            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            json(res, 200, { groups: store.labeledIndex() })
-          } catch (error) {
-            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
         path: PATHS.config,
         handler: async (req, res) => {
           try {
@@ -409,95 +397,6 @@ export function apply(ctx, config) {
             json(res, 200, { ok: true })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.organizePlan,
-        handler: async (req, res) => {
-          try {
-            if (req.method === 'GET') return json(res, 200, { plan: store.state.organize, preview: planPreview(store.state.organize) })
-            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, POST' })
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            const body = await readJson(req)
-            const plan = store.setOrganize(body ?? {})
-            json(res, 200, { plan, preview: planPreview(plan), state: store.snapshot() })
-          } catch (error) {
-            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.organizePlanExecute,
-        handler: async (req, res) => {
-          try {
-            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            const plan = store.state.organize
-            const { rows } = planPreview(plan)
-            const okRows = rows.filter((r) => r.ok)
-            if (okRows.length === 0) return json(res, 400, { error: 'nothing to organize' })
-            const created = []
-            for (const folder of [...plan.folders].sort((a, b) => a.length - b.length)) {
-              if (!exists(folder)) { mkdirSync(folder, { recursive: true }); created.push(folder) }
-            }
-            const results = await executeMoves(okRows.map((r) => ({ path: r.from, to: r.to })))
-            const moved = store.finishOrganize({ results, createdFolders: created })
-            json(res, 200, { moved, created, results, state: store.snapshot() })
-          } catch (error) {
-            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.organize,
-        handler: async (req, res) => {
-          try {
-            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            const body = await readJson(req)
-            const result = store.setOperation({ paths: body.paths, to: body.to, note: body.note })
-            json(res, 200, { ...result, state: store.snapshot() })
-          } catch (error) {
-            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.organizePreview,
-        handler: async (req, res) => {
-          try {
-            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
-            const ops = Object.entries(store.state.operations ?? {}).map(([path, op]) => ({ path, ...op }))
-            json(res, 200, { rows: await previewMoves(ops.slice(0, 500)) })
-          } catch (error) {
-            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.organizeExecute,
-        handler: async (req, res) => {
-          try {
-            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            const body = await readJson(req)
-            const only = Array.isArray(body.paths) ? new Set(body.paths) : null
-            const ops = Object.entries(store.state.operations ?? {})
-              .filter(([path]) => !only || only.has(path))
-              .map(([path, op]) => ({ path, ...op }))
-              .slice(0, 500)
-            if (ops.length === 0) return json(res, 400, { error: 'nothing to move' })
-            const results = await executeMoves(ops)
-            const moved = store.finishMoves({ results })
-            json(res, 200, { moved, results, state: store.snapshot() })
-          } catch (error) {
-            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
         },
       }),
@@ -685,29 +584,6 @@ function registerTools(ctx, api) {
         execute: async (args) => {
           const saved = api.markPaths(args)
           return lossless({ ok: true, batch: saved.id, count: saved.count, skipped: saved.skipped, bytes: saved.bytes })
-        },
-      })),
-      ctx.tools.register(defineTool({
-        name: 'disk_canvas_organize',
-        description:
-          '给一批路径写「移到某个目录」——和用户点「移到…」是同一份数据，画布上出现同样的角标。' +
-          '注意：这只写入计划，不会移动文件；真正移动要用户在画布上点确认。目标必须是绝对目录，文件名不变。',
-        parameters: {
-          paths: { type: 'array', items: { type: 'string' }, description: '绝对路径，≤500 个' },
-          destination: { type: 'string', required: true, description: '目标目录的绝对路径' },
-          note: { type: 'string', description: '一句话理由' },
-        },
-        output: {
-          schema: {
-            type: 'object',
-            properties: { ok: { type: 'boolean' }, batch: { type: 'string' }, count: { type: 'number' } },
-            additionalProperties: true,
-          },
-          render: (_args, value) => [{ type: 'text', text: `已登记 ${value.count} 项移动（批次 ${value.batch}），等待用户在画布上确认` }],
-        },
-        execute: async (args) => {
-          const saved = api.setOperation({ paths: args.paths, to: args.destination, note: args.note, by: 'agent' })
-          return lossless({ ok: true, batch: saved.batch, count: saved.count })
         },
       })),
       ctx.tools.register(defineTool({

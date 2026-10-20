@@ -1,6 +1,6 @@
 {
   "name": "dsh-disk-canvas",
-  "version": "1.17.1",
+  "version": "1.18.2",
   "type": "module",
   "description": "把磁盘扫成一张可批注的提案：Agent 标注、你来决定、删前可预览（DeepSeek Harness 插件）",
   "main": "./index.mjs",

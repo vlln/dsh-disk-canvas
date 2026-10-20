@@ -700,3 +700,15 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
   一键执行。数据是 `{folders, moves}`，存账本；执行时 `mkdir -p` + 逐项移动，成功后清空方案并记成一批。
 - 路由：`GET/POST /organize/plan`、`POST /organize/plan/execute`；预览自写（要容忍尚未创建的目录）。
 - Sparkline 加 padding 与 fluid 模式，曲线不再贴边溢出。
+
+
+## 2026-10-20 · 1.18.x 删索引与整理 + 修白屏
+
+- **删掉「跨层/标注索引」**：视图按钮、IndexView、`/index`、`store.labeledIndex`、`tests/index.test.mjs` 全部移除。
+- **删掉「整理」**：organize 视图、`/organize/plan*`、`/organize`、`/organize/preview`、`/organize/execute`、
+  `disk_canvas_organize` 工具、检查器整理行、批量条移动入口；账本里的 organize 方案也删了。
+  保留 `organize.mjs`（清理用的 `previewMoves/executeMoves`）与撤销批次（清理可撤销）。
+- **白屏 bug**：`Sparkline` 的参数叫 `h`，把 createElement 的 `h` 遮住了——点开带历史曲线的条目
+  `h is not a function`，整个 slot 崩掉。改名 `height` 后恢复。
+- 删代码时又切掉了 `applyState/playZoom/navRef/runScan/save/pickMany`（`navRef is not defined` 白屏），
+  从 HEAD 恢复；教训同前：按函数名切范围，删完立刻跑关键符号的 `grep -c`。

@@ -92,25 +92,6 @@
 预算按子项切分（每个子项 40 万条目 / 20 秒，全局 60 秒）——这样最大的目录不会吃光预算，
 其它子项不会变成 0。扫描进行中再请求 `scan` 会**排队**，当前这轮结束后自动换根重扫。
 
-## 2.6 标注索引
-
-只列**写过语义**的目录，按类别分组、嵌套只留最上层：
-
-```jsonc
-{
-  "groups": [
-    { "category": "build", "count": 3, "bytes": 5000000000,
-      "items": [{ "path": "/Users/me/app/.next", "name": ".next", "category": "build",
-                  "label": "构建产物", "bytes": 1240000000, "decision": null, "semanticState": "fresh" }] }
-  ]
-}
-```
-
-- 来源是 `claims`（语义），不再按目录名猜；没标注过的目录不会出现。
-- **嵌套去重**：A 包含 B 且两者都有语义时，只留 A。
-- 体积取自当前层或扫描时收集的命中目录；都没有时为 `null`（界面显示 `—`）。
-- 类别是**封闭词表**：`project / deps / build / cache / installer / media / doc / system / other`。
-
 ## 2.7 配置
 
 当前没有设置界面。`POST /config` 仍接受 `{ autoScanHours }` 与 `{ autoAnnotate }`（API 用），
@@ -154,28 +135,6 @@ Agent 可以对「人已经做过的决定」写一句异议：
 - 不能对 Agent 自己的标注提异议（那只是它的建议，不需要反对自己）。
 - 这是产品 §1 规则 4 的落地：Agent 可以不同意，但必须服从并写明异议。
 
-## 2.13 整理：移动
-
-与 `annotations` 平行的 `operations`：
-
-```jsonc
-{ "/Users/me/Downloads/setup.dmg": { "op": "move", "to": "/Users/me/Archive/Installers",
-  "note": "装完了", "by": "human", "batch": "o1a2b3", "at": 0 } }
-```
-
-- `to` 是**目录**，文件名不变；同一个对象标了移动就清掉它的 `delete`（意图替代）。
-- `POST /organize { paths, to, note }` 登记；`GET /organize/preview` 用只读 `stat` 预演；
-  `POST /organize/execute` 才真的移动。
-- **别名保护**（逐项检查，单项失败不影响其它项）：目标已存在 → 跳过；跨盘 → 跳过；
-  目标在源里 → 跳过；源不存在 → 跳过；目标不是目录 → 跳过。成功项写进账本 `moves`（from/to/at/bytes）。
-- 只有 `move` 一种 op。rename / group / archive 见 `annotation-canvas/ORGANIZE.md` 的 v2。
-- **整理视图的方案**：`GET/POST /organize/plan` 读写 `{ folders: [绝对路径], moves: [{ from, to }] }`，
-  全部是标记；`POST /organize/plan/execute` 先 `mkdir -p` 方案里的文件夹（记录 `created`），再逐项移动，
-  成功后清空方案并记成一批（`createdFolders` 一并存）。
-- **反向操作**：每次执行成功记一批 `moveBatches: [{id, at, items: [{from,to,bytes}]}]`（每根最近 10 批）。
-  `GET /organize/undo/preview?batch=` 返回反向行（`to → 原目录`，冲突规则同上）；
-  `POST /organize/undo { batch }` 执行；**全部成功才删掉这一批**，否则保留以便重试。
-
 ## 2.14 自动补语义
 
 - 画布打开时 `POST /bind { sessionId, preset }` 把当前会话和它跑的 preset 告诉宿主；多开会话时按 sessionId 记一份。
@@ -215,7 +174,6 @@ Agent 可以对「人已经做过的决定」写一句异议：
 | POST | `/plugins/dsh-disk-canvas/ask` | 让绑定的 disk-cleanup 会话按已有语义提一批清理候选（Agent 自己 mark） |
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
-| GET | `/plugins/dsh-disk-canvas/index` | 标注索引：写过语义的目录，按类别分组、嵌套只留最上层 |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
 
 POST 面校验同源（`Sec-Fetch-Site` / `Origin` 与 `Host`），并限 64 KiB 请求体。
