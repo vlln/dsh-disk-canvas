@@ -721,3 +721,12 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - 页面自己选会话：每 2.5s 读 `ctx.sessions.list.getSnapshot()`，优先选 preset 为 `disk-cleanup` 的会话，
   选择存 localStorage；绑定后自动补语义/提方案才有目标。
 - 会话页签入口保留。
+
+
+## 2026-10-20 · 1.20.0 一次性会话
+
+- 新路由 `POST /session`：宿主用 `sessionController.commands.create({ cwd: HOME, agentPreset: 'disk-cleanup' })`
+  建一个**不挂工作区**的会话，返回 `{sessionId, preset}`；因为不在 workspace 里，左侧列表看不到它。
+- 画布首页在没有任何绑定会话时自动调用一次，并把 id 记进 localStorage；下次打开复用它。
+- 实测：打开首页后自动出现 `session-…`、画布正常、`auto.sessions` 里有它（preset=disk-cleanup），
+  左侧列表没有新增行。

@@ -382,6 +382,33 @@ export function apply(ctx, config) {
           }
         },
       }),
+      // 一次性会话：不挂工作区，因此不出现在左侧列表；画布页打开时按需创建
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.session,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const body = await readJson(req)
+            const created = await new Promise((resolve, reject) => {
+              ctx.inject(['sessionController'], (scope) => {
+                const commands = scope.sessionController?.commands
+                if (!commands?.create) { reject(new Error('sessionController.commands.create unavailable')); return }
+                commands.create({
+                  ...(typeof body?.sessionId === 'string' ? { sessionId: body.sessionId } : {}),
+                  cwd: HOME,
+                  agentPreset: 'disk-cleanup',
+                  reusable: () => true,
+                }).then(resolve, reject)
+              })
+            })
+            json(res, 200, { sessionId: created.sessionId, preset: created.agentPreset ?? null })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
       ctx.webServer.register({
         kind: 'exact',
         path: PATHS.ask,
