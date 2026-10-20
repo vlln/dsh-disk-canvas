@@ -1,26 +1,20 @@
 <h1 align="center">盘查 · Pancha</h1>
 
-<p align="center">
-把磁盘变成一张可审查、可批注、可执行的盘面。<br/>
-Agent 负责看懂每个目录，你负责做决定，执行前一定先预览。
-</p>
+<p align="center">把磁盘变成一张可审查、可批注、可执行的盘面。<br/>Agent 负责看懂每个目录，你负责做决定，执行前一定先预览。</p>
 
 <p align="center">
-<a href="https://github.com/vlln/dsh-pancha/stargazers"><img src="https://img.shields.io/github/stars/vlln/dsh-pancha?style=flat" alt="stars"></a>
-<a href="https://github.com/vlln/dsh-pancha"><img src="https://img.shields.io/badge/dsh-0.2.x-blue" alt="dsh"></a>
+  <a href="https://github.com/vlln/dsh-pancha/stargazers"><img src="https://badgen.net/github/stars/vlln/dsh-pancha" alt="stars"></a>
+  <img src="https://badgen.net/badge/license/MIT/green" alt="license">
+  <img src="https://badgen.net/badge/dsh/0.2.x/blue" alt="dsh">
 </p>
 
-![盘查：树图 + 检查器](docs/canvas.png)
-
-## 为什么需要它
+![盘查：树图 + 检查器](docs/canvas.jpg)
 
 Finder 和 SpaceSniffer 只回答「哪个文件夹大」，不回答「它是什么、删了会怎样」。
 真要清理时，你得自己翻进去看、自己判断、自己记住哪些不能动——一次只能处理一个目录。
 
 盘查把这一步交给工具：Agent 为每个目录写一句语义（是什么、能不能清理、依据是什么），
-你只需要在盘面上做决定，执行时逐项预览、随时可撤销。
-
-和「让 Agent 直接删」的区别：**盘查里的 Agent 没有执行权**，它只能写标记；
+你只需要在盘面上做决定。和「让 Agent 直接删」的区别是——**它没有执行权，只能写标记**，
 真正移动文件必须由你点「执行清理」。
 
 ## 30 秒安装
@@ -30,50 +24,33 @@ Finder 和 SpaceSniffer 只回答「哪个文件夹大」，不回答「它是�
 **用 CLI**：
 
 ```sh
-# 安装
 dsh plugin --profile web add github:vlln/dsh-pancha
-
-# 升级
-dsh plugin --profile web update dsh-pancha
-
-# 卸载
-dsh plugin --profile web remove dsh-pancha
 ```
 
-- **生效条件**：装完刷新页面即可，无需重启宿主。
-- **前置**：dsh `0.2.x`（在 `0.2.1-rc.1` 上验证）；macOS / Linux。
-- **装不上时**：先确认 dsh ≥ 0.2；若 Plugins 页显示「加载失败」，多半是版本不匹配。
+- **生效**：装完刷新页面，无需重启宿主。
+- **前置**：dsh `0.2.x`（在 `0.2.1-rc.1` 上验证）。
+- **卸载**：`dsh plugin --profile web remove dsh-pancha`。
+- **装不上时**：先在 Plugins 页看是否显示「加载失败」，多半是 dsh 版本不匹配。
 
-### 装好之后怎么确认
+装好后左侧栏会出现 **盘查**，Plugins 页的「已安装插件」里也能看到它和图标。
+第一次打开会自动建一个一次性会话并扫描主目录，几秒后出现方块。
 
-- 左侧栏出现 **盘查**（和「自动化任务」同一栏）。
-- **Plugins 页**的「已安装插件」里能看到 `dsh-pancha` 和它的图标（见下图）。
-- 第一次打开会自动建一个一次性会话并扫描主目录，几秒后出现方块；点一个方块，右侧出现语义与依据。
+## 用起来
 
-![Plugins 页里的盘查](docs/plugins.png)
+### 看
 
-> 截图里的 dsh 版本是 `0.2.1-rc.1`。
+![列表视图](docs/list.jpg)
 
-## 用起来是什么样
+树图按体积占位，facet 色条告诉你这一层被归成了哪几类；点开方块，右侧显示语义、依据和历史体积曲线。
+列表视图把 1 像素以下的小项也列出来，方便逐项过。
 
-### 看：树图与列表
+### 定
 
-![列表视图](docs/list.png)
-
-| 区域 | 它回答什么问题 |
-|---|---|
-| 树图 | 哪里大、占了这一层的百分之多少 |
-| facet 色条 | 这一层被 Agent 归成了哪几类 |
-| 检查器 | 这个目录是什么、依据是什么、历史体积怎么变 |
-| 计划条 | 现在待清理多少、预计释放多少、还有多少没选 |
-
-### 定：保留 / 待清理
-
-- `K` / `D` 直接标记，`空格` 循环三态，`Backspace` 清除；多选时作用于全部。
+- `K` 保留、`D` 待清理、`空格` 循环三态，`Backspace` 清除；多选时作用于全部。
 - 方块立刻变样：保留是绿框 ✓，待清理是红底 ✕，Agent 标的还会带一个小 `A`。
-- 决定是唯一会被执行的东西；Agent 的语义和异议都不会改变你的决定。
+- 你的决定优先于 Agent 的语义；它只能写「异议」，不能改你的决定。
 
-### 执行：预览后移动
+### 执行
 
 点 **执行清理** → 逐项预览（源是否还在、目标是否冲突）→ 确认后移到废纸篓。
 macOS 拒绝写废纸篓时退到 `$DSH_HOME/trash/<时间戳>/`，界面会写明去向。
@@ -81,13 +58,12 @@ macOS 拒绝写废纸篓时退到 `$DSH_HOME/trash/<时间戳>/`，界面会写�
 
 ### 让 Agent 参与
 
-- 扫描结束后会自动补语义；扫描过程中也会先对已读到的部分动手。
-- 点 **让 Agent 提方案**，它按已有语义挑一批最有把握的待清理项。
-- 右上角 **对话** 打开抽屉，可以直接和它说话，看它这一轮做了什么。
+![对话](docs/chat.jpg)
 
-![对话](docs/chat.png)
+扫描结束后自动补语义，扫描过程中也会先对已读到的部分动手；点 **让 Agent 提方案** 让它挑一批最有把握的。
+右上角 **对话** 打开抽屉，可以直接问它、看它这一轮做了什么。
 
-## 能力面
+## Agent 能力
 
 | 工具 | 说明 |
 |---|---|
@@ -98,24 +74,24 @@ macOS 拒绝写废纸篓时退到 `$DSH_HOME/trash/<时间戳>/`，界面会写�
 | `disk_canvas_object` | 对你不同意的决定写一句异议，不改决定 |
 | `disk_canvas_history` | 读账本里的历史扫描与增量 |
 
+约束来自投递消息里的提示词：**只分析、标注、预览，不直接改动文件**。这是软约束——
+默认会话本身仍有文件/命令工具；要工具级隔离，需要自己加一个受控 preset。
+
 ## 安全与数据
 
-- **扫描**：只读 `readdir` / `stat`，不跟随符号链接，不修改任何文件。
-- **执行**：只做「移动到废纸篓」，没有删除接口；逐项检查冲突，单项失败不影响其它项。
-- **落盘**：扫描快照、决定、Agent 语义存在 `$DSH_HOME/data/dsh-pancha/ledger.json`，只在本机，不上传。
-- **外发**：只有你绑定的会话会把扫描结果摘要发给模型；没有遥测。
-- **Agent 权限**：约束来自投递消息里的提示词（只分析、标注、预览，不改文件），是**软约束**；
-  默认会话本身仍有文件/命令工具。
+- **扫描**只读 `readdir` / `stat`，不跟随符号链接，不修改任何文件。
+- **执行**只做「移动到废纸篓」，没有删除接口；逐项检查冲突，单项失败不影响其它项。
+- 扫描快照、决定、Agent 语义存在 `$DSH_HOME/data/dsh-pancha/ledger.json`，只在本机，不上传。
+- 没有遥测；只有你绑定的会话会把扫描结果摘要发给模型。
 
-## 支持的宿主与版本
+## 兼容性
 
-| 宿主 | profile | 状态 |
-|---|---|---|
-| 官方 `dsh web` | `web` | ✅ 已验证（dsh 0.2.1-rc.1） |
-| 官方 Desktop | `desktop` | ⚠️ 未验证 |
-| 其它 profile / 第三方宿主 | — | ⚠️ 未验证 |
+| dsh 版本 | 状态 |
+|---|---|
+| `0.2.1-rc.1` | ✅ 已验证（2026-10-20） |
+| 其它 `0.2.x` | ⚠️ 未验证——升级后若侧栏入口消失或面板空白，多半是 client 槽位改名 |
 
-web 与 desktop 安装互不相通，两个宿主各装一次。
+官方 Desktop 未验证；web 与 desktop 的安装互不相通，各装一次。
 
 ## 已知限制
 
@@ -128,13 +104,6 @@ web 与 desktop 安装互不相通，两个宿主各装一次。
 
 装/卸/启停用官方 CLI：`dsh plugin --profile web add|remove dsh-pancha`；已装插件在**侧边栏 Plugins 页**
 里查看与配置。Desktop 上从应用内的 Plugins 页安装与管理。
-
-## 兼容性
-
-| dsh 版本 | 状态 |
-|---|---|
-| `0.2.1-rc.1` | ✅ 已验证（2026-10-20） |
-| 其它 `0.2.x` | ⚠️ 未验证——升级后若侧栏入口消失或面板空白，多半是 client 槽位改名 |
 
 ## 反馈
 
