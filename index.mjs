@@ -4,6 +4,7 @@
 //   mode=tools —— preset 子行，只注册 disk_canvas_* 工具，工具只对该 preset 的 Agent 可见。
 // v0 不提供任何删除或移动动作——执行面在确认清单之后，且本版本刻意留空。
 import { stat } from 'node:fs/promises'
+import { mkdirSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -50,6 +51,20 @@ export function apply(ctx, config) {
     .map((e) => e.path)
 
   const TRASH = join(HOME, '.Trash')
+
+  const exists = (path) => { try { statSync(path); return true } catch { return false } }
+
+  /** 整理方案的预览：目标文件夹是否已存在、源是否还在、目标是否冲突。 */
+  const planPreview = (plan) => {
+    const folders = (plan.folders ?? []).map((path) => ({ path, exists: exists(path) }))
+    const rows = (plan.moves ?? []).map((m) => {
+      const dest = join(m.to, basename(m.from))
+      if (!exists(m.from)) return { from: m.from, to: m.to, dest, ok: false, reason: 'gone', bytes: 0 }
+      if (exists(dest)) return { from: m.from, to: m.to, dest, ok: false, reason: 'conflict', bytes: 0 }
+      return { from: m.from, to: m.to, dest, ok: true, bytes: 0 }
+    })
+    return { folders, rows }
+  }
 
   /** 把一条消息投递给绑定的会话（自动补语义 / 用户点「让 Agent 提方案」共用）。 */
   const askAgent = (text) => new Promise((resolve, reject) => {
@@ -394,6 +409,45 @@ export function apply(ctx, config) {
             json(res, 200, { ok: true })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.organizePlan,
+        handler: async (req, res) => {
+          try {
+            if (req.method === 'GET') return json(res, 200, { plan: store.state.organize, preview: planPreview(store.state.organize) })
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const body = await readJson(req)
+            const plan = store.setOrganize(body ?? {})
+            json(res, 200, { plan, preview: planPreview(plan), state: store.snapshot() })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.organizePlanExecute,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const plan = store.state.organize
+            const { rows } = planPreview(plan)
+            const okRows = rows.filter((r) => r.ok)
+            if (okRows.length === 0) return json(res, 400, { error: 'nothing to organize' })
+            const created = []
+            for (const folder of [...plan.folders].sort((a, b) => a.length - b.length)) {
+              if (!exists(folder)) { mkdirSync(folder, { recursive: true }); created.push(folder) }
+            }
+            const results = await executeMoves(okRows.map((r) => ({ path: r.from, to: r.to })))
+            const moved = store.finishOrganize({ results, createdFolders: created })
+            json(res, 200, { moved, created, results, state: store.snapshot() })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
         },
       }),
