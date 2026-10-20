@@ -692,3 +692,11 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - **修 bug**：`onMove` 用在了 `Rail` 里却没在 props 里声明（`onMove is not defined`），已补。
   另一个：`asking` 状态起初被 `s.replace` 打进了 `BatchBar`（同样的 `const [moving...]` 起始行），
   那里没有 `state`，切到多选就会炸；已从 BatchBar 删掉，只留 Page。
+
+
+## 2026-10-20 · 1.17.x 整理视图
+
+- 整理不再是一个输入框：新增 `organize` 视图（左=当前层、右=目标树），支持拖动、新建/删除文件夹（标记）、
+  一键执行。数据是 `{folders, moves}`，存账本；执行时 `mkdir -p` + 逐项移动，成功后清空方案并记成一批。
+- 路由：`GET/POST /organize/plan`、`POST /organize/plan/execute`；预览自写（要容忍尚未创建的目录）。
+- Sparkline 加 padding 与 fluid 模式，曲线不再贴边溢出。

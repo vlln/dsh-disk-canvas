@@ -169,6 +169,9 @@ Agent 可以对「人已经做过的决定」写一句异议：
 - **别名保护**（逐项检查，单项失败不影响其它项）：目标已存在 → 跳过；跨盘 → 跳过；
   目标在源里 → 跳过；源不存在 → 跳过；目标不是目录 → 跳过。成功项写进账本 `moves`（from/to/at/bytes）。
 - 只有 `move` 一种 op。rename / group / archive 见 `annotation-canvas/ORGANIZE.md` 的 v2。
+- **整理视图的方案**：`GET/POST /organize/plan` 读写 `{ folders: [绝对路径], moves: [{ from, to }] }`，
+  全部是标记；`POST /organize/plan/execute` 先 `mkdir -p` 方案里的文件夹（记录 `created`），再逐项移动，
+  成功后清空方案并记成一批（`createdFolders` 一并存）。
 - **反向操作**：每次执行成功记一批 `moveBatches: [{id, at, items: [{from,to,bytes}]}]`（每根最近 10 批）。
   `GET /organize/undo/preview?batch=` 返回反向行（`to → 原目录`，冲突规则同上）；
   `POST /organize/undo { batch }` 执行；**全部成功才删掉这一批**，否则保留以便重试。
