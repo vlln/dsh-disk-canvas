@@ -630,3 +630,17 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 一刀切掉了 `applyState / playZoom / runScan / save / copyList` 等一整段函数，
 页面白屏（`runScan is not defined`）。教训：**按函数名切片删除时，先确认两端的顺序**，
 删完立刻 `grep -c "const runScan"` 之类做一次结构断言，再继续。
+
+
+## 2026-10-19 · 1.13.x 执行清理 / 让 Agent 提方案 / 颜色
+
+- **执行清理按钮**：计划条在有 `deleteCount` 时出现「执行清理」→ `/execute/preview` 逐项预览 →
+  `/execute` 真正移动。成功项删批注、从当前层移除，并记成批次（复用 `moveBatches`，所以「撤销这批」能移回）。
+- **macOS 的坑**：`rename` 到 `~/.Trash` 直接 `EPERM`（TCC 保护）。现在把 `EPERM/EACCES` 映射成长度更明确的
+  `denied`，`/execute` 对 denied 项**退到 `$DSH_HOME/trash/<ts>`**，前端提示「系统废纸篓没有权限，已移入插件回收目录」。
+  这样按钮在任何权限下都能真的落地，而且仍可撤销。
+- **让 Agent 提方案**：`POST /ask` 往绑定的 disk-cleanup 会话投一条「挑一批有把握的标成 delete」的消息，
+  和自动补语义共用 `askAgent()`。
+- **颜色**：`--dc-facet-fill` 8% → 18%，去掉色条后仍能看出类别。
+- **色号迁移 bug**：`facetHue` 里旧的自由类别键占满了 0–7，规范键全被记成 -1，导致所有方块无色。
+  现在加载时只保留封闭词表里的键，`-1` 不再被当作有效分配，有空格就重新给。

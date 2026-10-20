@@ -227,6 +227,9 @@ Agent 可以对「人已经做过的决定」写一句异议：
 | 方法 | 路径 | 作用 |
 |---|---|---|
 | GET | `/plugins/dsh-disk-canvas/state` | 当前根、条目、批注、计划（首次调用会懒扫描主目录） |
+| GET | `/plugins/dsh-disk-canvas/execute/preview` | 清理预览：待清理项 → 废纸篓，逐项冲突检查 |
+| POST | `/plugins/dsh-disk-canvas/execute` | 执行清理：移到 `~/.Trash`；TCC 拒绝（EPERM）时退到 `$DSH_HOME/trash/<ts>`，记成可撤销批次 |
+| POST | `/plugins/dsh-disk-canvas/ask` | 让绑定的 disk-cleanup 会话按已有语义提一批清理候选（Agent 自己 mark） |
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/index` | 标注索引：写过语义的目录，按类别分组、嵌套只留最上层 |

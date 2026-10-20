@@ -5,7 +5,7 @@
 // v0 不提供任何删除或移动动作——执行面在确认清单之后，且本版本刻意留空。
 import { stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { dirname, isAbsolute } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { scanChildren } from './lib/src/scan.mjs'
 import { createStore } from './lib/src/store.mjs'
@@ -44,6 +44,33 @@ export function apply(ctx, config) {
   let queuedReason = 'refresh'
   let queuedKeep = false
 
+  /** 当前层里标了待清理的路径（执行清理与预览共用）。 */
+  const deletePaths = () => store.state.entries
+    .filter((e) => store.state.annotations[e.path]?.decision === 'delete')
+    .map((e) => e.path)
+
+  const TRASH = join(HOME, '.Trash')
+
+  /** 把一条消息投递给绑定的会话（自动补语义 / 用户点「让 Agent 提方案」共用）。 */
+  const askAgent = (text) => new Promise((resolve, reject) => {
+    const candidates = [...bindings.entries()]
+      .filter(([, info]) => info.preset === 'disk-cleanup')
+      .sort((a, b) => a[1].at - b[1].at)
+    const target = candidates.at(-1)
+    if (!target) { reject(new Error('no disk-cleanup session bound')); return }
+    const [sessionId] = target
+    ctx.inject(['sessionController'], (scope) => {
+      const commands = scope.sessionController?.commands
+      if (!commands?.prompt) { reject(new Error('sessionController.commands unavailable')); return }
+      Promise.resolve(commands.prompt({
+        requestId: randomUUID(),
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text }],
+      }, { kind: 'disk-canvas' })).then(resolve).catch(reject)
+    })
+  })
+
   /**
    * 自动补语义：扫描完成后，把一条「该标注了」的消息投递回当前会话。
    * 只在用户主动扫描（refresh / schedule）之后触发，有冷却，避免把会话刷成流水账。
@@ -79,18 +106,8 @@ export function apply(ctx, config) {
       '请用 disk_canvas_state 读取 pending，挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；',
       '不要替用户做决定，也不要一次标太多。',
     ].join('')
-    ctx.inject(['sessionController'], (scope) => {
-      // 走控制器的内部命令通道：它接受我们自己的 source kind（Remote 那层会把 source 固定成 user）
-      const commands = scope.sessionController?.commands
-      if (!commands?.prompt) { lastAutoError = 'sessionController.commands unavailable'; return }
-      Promise.resolve(commands.prompt({
-        requestId: randomUUID(),
-        sessionId,
-        mode: 'queue',
-        content: [{ type: 'text', text }],
-      }, { kind: 'disk-canvas' })).then(() => { lastAutoError = '' })
-        .catch((error) => { lastAutoError = String(error?.message ?? error).slice(0, 200) })
-    })
+    askAgent(text).then(() => { lastAutoError = '' })
+      .catch((error) => { lastAutoError = String(error?.message ?? error).slice(0, 200) })
   }
 
   /** 渐进扫描：子项一完成就上屏；同一时间只跑一个，后到的请求排队换根。 */
@@ -301,6 +318,65 @@ export function apply(ctx, config) {
             }
             if (body.autoAnnotate !== undefined) store.setConfig({ autoAnnotate: Boolean(body.autoAnnotate) })
             json(res, 200, store.snapshot())
+          } catch (error) {
+            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.executePreview,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
+            const ops = deletePaths().map((path) => ({ path, to: TRASH }))
+            json(res, 200, { trash: TRASH, rows: await previewMoves(ops.slice(0, 500)) })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.execute,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const paths = deletePaths().slice(0, 500)
+            if (paths.length === 0) return json(res, 400, { error: 'nothing to delete' })
+            const results = await executeMoves(paths.map((path) => ({ path, to: TRASH })))
+            // macOS 下 ~/.Trash 可能被 TCC 保护（EPERM）：退到插件自己的回收目录，保证「清理」真的能落地
+            let fallback = null
+            const denied = results.filter((r) => !r.ok && r.reason === 'denied')
+            if (denied.length > 0) {
+              fallback = join(process.env.DSH_HOME ?? join(HOME, '.dsh'), 'trash', new Date().toISOString().replace(/[:.]/g, '-'))
+              const retry = await executeMoves(denied.map((r) => ({ path: r.from, to: fallback })))
+              for (const row of retry) {
+                const index = results.findIndex((r) => r.from === row.from)
+                if (index >= 0) results[index] = row
+              }
+            }
+            const removed = store.finishDelete({ results })
+            json(res, 200, { removed, trash: fallback ?? TRASH, fallback: Boolean(fallback), results, state: store.snapshot() })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.ask,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            await askAgent([
+              `请根据画布上已有的语义（state 里的 entries[].semantic），挑出可以清理的项，`,
+              `用 disk_canvas_mark 标成 delete；只标你有把握的，一次别超过 10 项，`,
+              `标完告诉用户标了哪些、为什么、可以整批撤销。没有把握的就留着。`,
+            ].join(''))
+            json(res, 200, { ok: true })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }
