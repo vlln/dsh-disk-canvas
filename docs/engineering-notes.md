@@ -712,3 +712,12 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
   `h is not a function`，整个 slot 崩掉。改名 `height` 后恢复。
 - 删代码时又切掉了 `applyState/playZoom/navRef/runScan/save/pickMany`（`navRef is not defined` 白屏），
   从 HEAD 恢复；教训同前：按函数名切范围，删完立刻跑关键符号的 `grep -c`。
+
+
+## 2026-10-20 · 1.19.0 侧边栏入口
+
+- 新增 `main` 槽位页面（key = `disk-canvas-home`）与 `sidebar.panellist` 条目（order 30），
+  和「自动化任务」同栏；点击直接进整页画布，不再需要先有会话页签。
+- 页面自己选会话：每 2.5s 读 `ctx.sessions.list.getSnapshot()`，优先选 preset 为 `disk-cleanup` 的会话，
+  选择存 localStorage；绑定后自动补语义/提方案才有目标。
+- 会话页签入口保留。
