@@ -730,3 +730,14 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - 画布首页在没有任何绑定会话时自动调用一次，并把 id 记进 localStorage；下次打开复用它。
 - 实测：打开首页后自动出现 `session-…`、画布正常、`auto.sessions` 里有它（preset=disk-cleanup），
   左侧列表没有新增行。
+
+
+## 2026-10-21 · 1.21.x 去掉 preset + 嵌入对话
+
+- **B 方案**：删掉 `disk-cleanup` preset，`disk_canvas_*` 工具改为挂在 profile 顶层的 `mode: tools`，
+  默认会话即可用；一次性会话默认 preset（standard）；宿主不再按 preset 过滤绑定；约束改由每条投递消息
+  的提示词携带（`[磁盘画布] …`）。代价：Agent 有能力改文件，只是被要求不改。
+- **嵌入对话**：`GET /transcript?sessionId=` 从宿主 `ctx.sessions.get(id).snapshotEvents()` 里抽
+  `agent/inbox/spliced`（用户）与 `assistant/message`（助手）的纯文本；`POST /say` 走同一个
+  `askAgent`（带画布约束）。画布页右上角「对话」打开 340px 抽屉，2s 轮询。
+- 实测：抽屉里发一句话，用户消息与助手回复都出现；助手也确认自己「能读写文件」——正是 B 的软约束。

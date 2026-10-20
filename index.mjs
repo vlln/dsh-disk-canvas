@@ -67,12 +67,10 @@ export function apply(ctx, config) {
   }
 
   /** 把一条消息投递给绑定的会话（自动补语义 / 用户点「让 Agent 提方案」共用）。 */
-  const askAgent = (text) => new Promise((resolve, reject) => {
-    const candidates = [...bindings.entries()]
-      .filter(([, info]) => info.preset === 'disk-cleanup')
-      .sort((a, b) => a[1].at - b[1].at)
-    const target = candidates.at(-1)
-    if (!target) { reject(new Error('no disk-cleanup session bound')); return }
+  const askAgent = (text, forcedId = null) => new Promise((resolve, reject) => {
+    const candidates = [...bindings.entries()].sort((a, b) => a[1].at - b[1].at)
+    const target = forcedId ? [forcedId, { at: 0 }] : candidates.at(-1)
+    if (!target) { reject(new Error('no session bound')); return }
     const [sessionId] = target
     ctx.inject(['sessionController'], (scope) => {
       const commands = scope.sessionController?.commands
@@ -92,7 +90,7 @@ export function apply(ctx, config) {
    */
   /**
    * 每个打开过画布的会话都记一笔（sessionId → {preset, at}）。
-   * 自动补语义只挑「最近一次、且跑的是 disk-cleanup」的那个——多开会话时不能听最后一个 bind。
+   * 自动补语义只挑「最近一次绑定」的会话——多开会话时不能听最后一个 bind。
    */
   const bindings = new Map()
   let lastAutoAt = 0
@@ -103,19 +101,19 @@ export function apply(ctx, config) {
     if (pending === 0) return
     // 同一次扫描只触发一次：重复的 state 轮询 / 重复进入都不会再唤醒
     if (scannedAt === lastAutoScannedAt) return
-    const candidates = [...bindings.entries()]
-      .filter(([, info]) => info.preset === 'disk-cleanup')
-      .sort((a, b) => a[1].at - b[1].at)
+    const candidates = [...bindings.entries()].sort((a, b) => a[1].at - b[1].at)
     const target = candidates.at(-1)
     if (!target) {
       // 只有「磁盘整理」这个 preset 里才有 disk_canvas_* 工具；投进别的会话只会让 Agent 干瞪眼
-      lastAutoError = bindings.size === 0 ? 'no session bound' : 'no disk-cleanup session bound'
+      lastAutoError = 'no session bound'
       return
     }
     const [sessionId] = target
     lastAutoScannedAt = scannedAt
     lastAutoAt = Date.now()
     const text = [
+      '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件。',
+      '不要用 shell / 写文件 / 删文件；需要移动时用 disk_canvas_organize 登记，执行由用户点。',
       `磁盘扫描完成：${store.state.root}（${store.state.entries.length} 项）。`,
       `其中 ${pending} 项还没有语义。`,
       '请用 disk_canvas_state 读取 pending，挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；',
@@ -136,6 +134,7 @@ export function apply(ctx, config) {
       if (!early && reason !== 'agent' && store.state.entries.length >= 6 && store.pendingSemantics(50).length > 0) {
         early = true
         askAgent([
+          '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件。',
           `磁盘扫描进行中：已经读到 ${store.state.entries.length} 项（还会继续）。`,
           '可以先用 disk_canvas_state { wait:false } 看当前结果，给最有把握的项写语义；',
           '不要等扫描结束，也不要一次标太多。',
@@ -398,12 +397,68 @@ export function apply(ctx, config) {
                 commands.create({
                   ...(typeof body?.sessionId === 'string' ? { sessionId: body.sessionId } : {}),
                   cwd: HOME,
-                  agentPreset: 'disk-cleanup',
                   reusable: () => true,
                 }).then(resolve, reject)
               })
             })
             json(res, 200, { sessionId: created.sessionId, preset: created.agentPreset ?? null })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      // 会话文字记录：只取 user/assistant 的纯文本，给画布里的对话抽屉用
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.transcript,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
+            const url = new URL(req.url ?? '/', 'http://localhost')
+            const sessionId = url.searchParams.get('sessionId') ?? ''
+            const messages = await new Promise((resolve) => {
+              ctx.inject(['sessions'], (scope) => {
+                const session = scope.sessions?.get?.(sessionId)
+                if (!session?.snapshotEvents) { resolve([]); return }
+                const out = []
+                for (const event of session.snapshotEvents()) {
+                  if (event.type === 'agent/inbox/spliced') {
+                    for (const item of event.data?.inserted ?? []) {
+                      const text = (item.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('')
+                      if (text) out.push({ role: 'user', text: text.slice(0, 2000), at: event.time })
+                    }
+                  } else if (event.type === 'assistant/message') {
+                    const text = (event.data?.message?.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('')
+                    if (text) out.push({ role: 'assistant', text: text.slice(0, 2000), at: event.time })
+                  }
+                }
+                resolve(out.slice(-40))
+              })
+            })
+            json(res, 200, { messages })
+          } catch (error) {
+            json(res, 500, { error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      }),
+      ctx.webServer.register({
+        kind: 'exact',
+        path: PATHS.say,
+        handler: async (req, res) => {
+          try {
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
+            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
+            const body = await readJson(req)
+            const text = typeof body?.text === 'string' ? body.text.trim() : ''
+            const sessionId = typeof body?.sessionId === 'string' && body.sessionId ? body.sessionId : null
+            if (!text) return json(res, 400, { error: 'text required' })
+            // 抽屉里的自由对话也带上画布的约束（B 方案下这是软约束）
+            await askAgent([
+              '[磁盘画布] 你在磁盘画布的对话里：只分析、标注、预览，不要直接改文件、不要执行删除命令；',
+              '要动文件时用 disk_canvas_mark / disk_canvas_organize 写标记，执行由用户点。',
+              text,
+            ].join(''), sessionId)
+            json(res, 200, { ok: true })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
@@ -417,6 +472,7 @@ export function apply(ctx, config) {
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
             if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
             await askAgent([
+              '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件；不要用 shell/写文件/删文件。',
               `请根据画布上已有的语义（state 里的 entries[].semantic），挑出可以清理的项，`,
               `用 disk_canvas_mark 标成 delete；只标你有把握的，一次别超过 10 项，`,
               `标完告诉用户标了哪些、为什么、可以整批撤销。没有把握的就留着。`,
