@@ -1,8 +1,8 @@
 {
   "name": "dsh-pancha",
-  "version": "2.6.1",
+  "version": "3.0.0",
   "type": "module",
-  "description": "盘查 · 把磁盘变成一张可审查、可批注、可执行的盘面（dsh 插件）",
+  "description": "盘查（Pancha）：把磁盘变成一张可审查、可批注、可执行的盘面。dsh 插件。",
   "main": "./index.mjs",
   "icon": "./icon.svg",
   "exports": {
@@ -27,17 +27,23 @@
     "cordis.patch.yml",
     "icon.svg",
     "README.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs/contract.md",
+    "docs/*.png"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs"
   },
   "keywords": [
+    "dsh",
     "dsh-plugin",
     "disk",
-    "cleanup",
+    "disk-usage",
     "treemap",
-    "annotation"
+    "cleanup",
+    "annotation",
+    "agent"
   ],
   "license": "MIT",
   "repository": {
@@ -47,5 +53,8 @@
   "bugs": {
     "url": "https://github.com/vlln/dsh-pancha/issues"
   },
-  "homepage": "https://github.com/vlln/dsh-pancha#readme"
+  "homepage": "https://github.com/vlln/dsh-pancha#readme",
+  "engines": {
+    "node": ">=20"
+  }
 }
