@@ -759,3 +759,11 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - 删掉 `conversation.view` 页签：盘查现在是侧边栏整页（`main` + `sidebar.panellist`）。
 - 对话入口从页头移到画布工具栏（「对话」按钮，chat 图标），同时保留页头按钮。
 - 版本跳到 2.0.0，因为包名与数据目录都变了。
+
+
+## 2026-10-21 · 2.1.x 对话 markdown + 侧边栏图标
+
+- 助手消息走极简 markdown：代码块、标题、`- ` / `1. ` 列表、**粗体**、`行内代码`（只渲染文本节点，不注入 HTML）。
+- 列表项把行内内容包进一个 span，否则 flex 会把每个 inline 元素当成独立 flex item（文字被拆行）。
+- 对话面板 `overflow:hidden` + 各层 `min-width:0`，长代码块不再撑破 360px 面板。
+- 侧边栏入口改用 `PanchaGlyph`：与 `icon.svg` 同构的描边 treemap（大块 + 右侧两块），不再用通用 grid 图标。
