@@ -2,6 +2,8 @@
 
 <p align="center">把磁盘变成一张可审查、可批注、可执行的盘面。<br/>Agent 负责看懂每个目录，你负责做决定，执行前一定先预览。</p>
 
+<p align="center"><a href="README.en.md">English</a> | 中文</p>
+
 <p align="center">
   <a href="https://github.com/vlln/dsh-pancha/stargazers"><img src="https://badgen.net/github/stars/vlln/dsh-pancha" alt="stars"></a>
   <img src="https://badgen.net/badge/license/MIT/green" alt="license">

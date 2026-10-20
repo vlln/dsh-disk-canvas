@@ -1,6 +1,6 @@
 {
   "name": "dsh-pancha",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "type": "module",
   "description": "盘查：把磁盘变成一张可审查、可批注、可执行的盘面（DeepSeek Harness 插件）",
   "main": "./index.mjs",
@@ -26,11 +26,12 @@
     "lib/src",
     "cordis.patch.yml",
     "icon.svg",
-    "README.md",
     "CHANGELOG.md",
     "LICENSE",
     "docs/contract.md",
-    "docs/*.jpg"
+    "docs/*.jpg",
+    "README.md",
+    "README.en.md"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs"
