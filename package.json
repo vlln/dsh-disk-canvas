@@ -1,6 +1,6 @@
 {
   "name": "dsh-pancha",
-  "version": "2.1.2",
+  "version": "2.2.5",
   "type": "module",
   "description": "盘查 · 把磁盘变成一张可审查、可批注、可执行的盘面（dsh 插件）",
   "main": "./index.mjs",
