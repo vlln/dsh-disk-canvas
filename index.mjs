@@ -67,6 +67,11 @@ export function apply(ctx, config) {
   }
 
   /** 把一条消息投递给绑定的会话（自动补语义 / 用户点「让 Agent 提方案」共用）。 */
+  const CANVAS_RULES = '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件。不要用 shell / 写文件 / 删文件；要动文件时用 disk_canvas_mark / disk_canvas_organize 写标记，执行由用户点。'
+  const CONTEXT_SEP = '\n\n---\n\n'
+  /** 给模型看的上下文和给用户看的话用分隔符隔开，转录时只显示后面那段。 */
+  const withRules = (body) => `${CANVAS_RULES}${CONTEXT_SEP}${body}`
+
   const askAgent = (text, forcedId = null) => new Promise((resolve, reject) => {
     const candidates = [...bindings.entries()].sort((a, b) => a[1].at - b[1].at)
     const target = forcedId ? [forcedId, { at: 0 }] : candidates.at(-1)
@@ -112,14 +117,12 @@ export function apply(ctx, config) {
     lastAutoScannedAt = scannedAt
     lastAutoAt = Date.now()
     const text = [
-      '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件。',
-      '不要用 shell / 写文件 / 删文件；需要移动时用 disk_canvas_organize 登记，执行由用户点。',
       `磁盘扫描完成：${store.state.root}（${store.state.entries.length} 项）。`,
       `其中 ${pending} 项还没有语义。`,
       '请用 disk_canvas_state 读取 pending，挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；',
       '不要替用户做决定，也不要一次标太多。',
     ].join('')
-    askAgent(text).then(() => { lastAutoError = '' })
+    askAgent(withRules(text)).then(() => { lastAutoError = '' })
       .catch((error) => { lastAutoError = String(error?.message ?? error).slice(0, 200) })
   }
 
@@ -133,12 +136,11 @@ export function apply(ctx, config) {
       // 扫描可能很久：先让 Agent 对已经出来的部分动手，别等全部扫完
       if (!early && reason !== 'agent' && store.state.entries.length >= 6 && store.pendingSemantics(50).length > 0) {
         early = true
-        askAgent([
-          '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件。',
+        askAgent(withRules([
           `磁盘扫描进行中：已经读到 ${store.state.entries.length} 项（还会继续）。`,
           '可以先用 disk_canvas_state { wait:false } 看当前结果，给最有把握的项写语义；',
           '不要等扫描结束，也不要一次标太多。',
-        ].join('')).catch(() => { /* 没绑定会话就等扫完再发 */ })
+        ].join(''))).catch(() => { /* 没绑定会话就等扫完再发 */ })
       }
     }
     running = scanChildren(
@@ -416,16 +418,19 @@ export function apply(ctx, config) {
             if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed; use GET' }, { allow: 'GET' })
             const url = new URL(req.url ?? '/', 'http://localhost')
             const sessionId = url.searchParams.get('sessionId') ?? ''
+            let running = false
             const messages = await new Promise((resolve) => {
               ctx.inject(['sessions'], (scope) => {
                 const session = scope.sessions?.get?.(sessionId)
+                running = Boolean(session?.running)
                 if (!session?.snapshotEvents) { resolve([]); return }
                 const out = []
                 for (const event of session.snapshotEvents()) {
                   if (event.type === 'agent/inbox/spliced') {
                     for (const item of event.data?.inserted ?? []) {
                       const text = (item.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('')
-                      if (text) out.push({ role: 'user', text: text.slice(0, 2000), at: event.time })
+                      const shown = text.includes(CONTEXT_SEP) ? text.slice(text.lastIndexOf(CONTEXT_SEP) + CONTEXT_SEP.length) : text
+                      if (shown.trim()) out.push({ role: 'user', text: shown.slice(0, 2000), at: event.time })
                     }
                   } else if (event.type === 'assistant/message') {
                     const text = (event.data?.message?.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('')
@@ -435,7 +440,7 @@ export function apply(ctx, config) {
                 resolve(out.slice(-40))
               })
             })
-            json(res, 200, { messages })
+            json(res, 200, { messages, running })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
           }
@@ -453,11 +458,7 @@ export function apply(ctx, config) {
             const sessionId = typeof body?.sessionId === 'string' && body.sessionId ? body.sessionId : null
             if (!text) return json(res, 400, { error: 'text required' })
             // 抽屉里的自由对话也带上画布的约束（B 方案下这是软约束）
-            await askAgent([
-              '[磁盘画布] 你在磁盘画布的对话里：只分析、标注、预览，不要直接改文件、不要执行删除命令；',
-              '要动文件时用 disk_canvas_mark / disk_canvas_organize 写标记，执行由用户点。',
-              text,
-            ].join(''), sessionId)
+            await askAgent(withRules(text), sessionId)
             json(res, 200, { ok: true })
           } catch (error) {
             json(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -471,12 +472,11 @@ export function apply(ctx, config) {
           try {
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed; use POST' }, { allow: 'POST' })
             if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            await askAgent([
-              '[磁盘画布] 你是磁盘整理助手：只分析、标注、预览，绝不直接改动文件；不要用 shell/写文件/删文件。',
+            await askAgent(withRules([
               `请根据画布上已有的语义（state 里的 entries[].semantic），挑出可以清理的项，`,
               `用 disk_canvas_mark 标成 delete；只标你有把握的，一次别超过 10 项，`,
               `标完告诉用户标了哪些、为什么、可以整批撤销。没有把握的就留着。`,
-            ].join(''))
+            ].join('')))
             json(res, 200, { ok: true })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
