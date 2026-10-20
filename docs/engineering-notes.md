@@ -681,3 +681,14 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - **删掉「进入目录」按钮和 Enter 快捷键**（双击方块仍可进入）；**删掉「在对话里问这一项」**（`askInChat` 一并删）。
 - **「让 Agent 提方案」跨页签保持**：`asking` 存 localStorage（{at, batch}），切回画布时若期间出现了新批次
   就直接结束等待并提示；90 秒超时清除。
+
+
+## 2026-10-20 · 1.16.x 语义压短 + 整理入口 + 修复
+
+- **语义压短**：persona 要求 claim ≤40 字、结论先行、细节进 evidence（≤3 条）；服务端 `setClaim` 超过 120 字直接拒绝
+  （让模型自己压短，而不是把长文塞进画布）；界面里超过 90 字的 claim 折叠成 3 行、点击展开。
+- **整理入口**：检查器里加「整理」行（目标路径输入 + 按钮）→ 复用 `movePicked` + `openOrganize` 的预览 →
+  执行 → 可撤销。persona 也补了一条：整理用 `disk_canvas_organize` 登记、不执行。
+- **修 bug**：`onMove` 用在了 `Rail` 里却没在 props 里声明（`onMove is not defined`），已补。
+  另一个：`asking` 状态起初被 `s.replace` 打进了 `BatchBar`（同样的 `const [moving...]` 起始行），
+  那里没有 `state`，切到多选就会炸；已从 BatchBar 删掉，只留 Page。
