@@ -48,7 +48,7 @@ test('semanticState: 没语义 / 没快照 / 找不到对象', () => {
 test('store: 写语义后再扫同一层判 fresh，变了判 stale 并进 pending', () => {
   const store = createStore()
   scan(store, [dir('a', 1_000_000), dir('b', 2_000_000)], Date.now() - 2000)
-  store.setClaim({ path: `${ROOT}/a`, claim: '构建产物', label: '构建产物', category: '构建产物', evidence: ['有 .next 目录'] })
+  store.setClaim({ path: `${ROOT}/a`, claim: '构建产物', label: '构建产物', category: 'build', evidence: ['有 .next 目录'] })
 
   let a = store.snapshot().entries.find((e) => e.name === 'a')
   assert.equal(a.semantic.state, 'fresh')
@@ -74,7 +74,7 @@ test('store: 写语义后再扫同一层判 fresh，变了判 stale 并进 pendi
 test('store: 不在当前层的路径也能写语义，落盘时没有快照', () => {
   const store = createStore()
   scan(store, [dir('a', 1000)], Date.now())
-  const saved = store.setClaim({ path: '/tmp/elsewhere/node_modules', claim: '依赖目录', category: '依赖' })
+  const saved = store.setClaim({ path: '/tmp/elsewhere/node_modules', claim: '依赖目录', category: 'deps' })
   assert.equal(saved.m, undefined)
-  assert.equal(store.snapshot().claims['/tmp/elsewhere/node_modules'].category, '依赖')
+  assert.equal(store.snapshot().claims['/tmp/elsewhere/node_modules'].category, 'deps')
 })

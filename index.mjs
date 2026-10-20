@@ -58,7 +58,6 @@ export function apply(ctx, config) {
   let lastAutoError = ''
 
   const autoAnnotate = (pending, scannedAt) => {
-    if (store.state.config?.autoAnnotate === false) return
     if (pending === 0) return
     // 同一次扫描只触发一次：重复的 state 轮询 / 重复进入都不会再唤醒
     if (scannedAt === lastAutoScannedAt) return
@@ -111,7 +110,8 @@ export function apply(ctx, config) {
           patternsTruncated: result.patternsTruncated,
           reason,
         })
-        if (reason === 'refresh' || reason === 'schedule') autoAnnotate(store.pendingSemantics(50).length, result.scannedAt)
+        // 每次扫描结束都通知 Agent 一次（agent 自己触发的扫描除外，否则会自激）
+        if (reason !== 'agent') autoAnnotate(store.pendingSemantics(50).length, result.scannedAt)
         return next
       })
       .catch(() => store.finishScan({ partial: true, scannedAt: Date.now(), reason }))
@@ -301,23 +301,6 @@ export function apply(ctx, config) {
             }
             if (body.autoAnnotate !== undefined) store.setConfig({ autoAnnotate: Boolean(body.autoAnnotate) })
             json(res, 200, store.snapshot())
-          } catch (error) {
-            json(res, 400, { error: error instanceof Error ? error.message : String(error) })
-          }
-        },
-      }),
-      ctx.webServer.register({
-        kind: 'exact',
-        path: PATHS.proposal,
-        handler: async (req, res) => {
-          try {
-            if (isCrossOrigin(req.headers, req.headers.host)) return json(res, 403, { error: 'cross-origin request rejected' })
-            if (req.method === 'GET') return json(res, 200, store.exportProposal())
-            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, POST' })
-            const body = await readJson(req)
-            if (body?.kind !== 'proposal' && !body?.annotations) return json(res, 400, { error: 'not a proposal file' })
-            const result = store.importProposal({ annotations: body.annotations, claims: body.claims, rules: body.rules })
-            json(res, 200, { ...result, state: store.snapshot() })
           } catch (error) {
             json(res, 400, { error: error instanceof Error ? error.message : String(error) })
           }
@@ -624,7 +607,11 @@ function registerTools(ctx, api) {
           path: { type: 'string', required: true, description: '绝对路径' },
           claim: { type: 'string', required: true, description: '一句话判断：这是什么、删了会怎样' },
           label: { type: 'string', description: '短名字，例如「Xcode 编译中间产物」；画布上优先显示它' },
-          category: { type: 'string', description: '自定类别，例如「构建产物」「安装包」「录屏」；同一类用同一个词，画布据此聚合' },
+          category: {
+            type: 'string',
+            description: '从固定词表里选：project / deps / build / cache / installer / media / doc / system / other。不要自造类别',
+            enum: ['project', 'deps', 'build', 'cache', 'installer', 'media', 'doc', 'system', 'other'],
+          },
           evidence: { type: 'array', items: { type: 'string' }, description: '依据列表：读过什么文件、看到什么名字/时间，1–3 条足够' },
           confidence: { type: 'number', description: '0–1，表示对这条判断的把握' },
           model: { type: 'string', description: '可省略；留空则由宿主记录' },

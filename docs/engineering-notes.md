@@ -610,3 +610,23 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 
 实测（live 实例，1440）：68 个方块、3 个箭头、无「按规则选」、计划条「待清理 0 / 预计释放 0 B / 保留 0 / 未选择 76」；
 索引视图 10 组 / 12 项 / 152 GB，分组名就是 Agent 写的类别；检查器分段变成「保留 K / 待清理 D / 未选择」。
+
+
+## 2026-10-19 · 1.12.x 五项再收缩
+
+1. **去掉方块左侧 3px 色条**：只保留淡填充，避免「每条边一个颜色」的噪声。
+2. **去掉「Agent 标注」chip**：Agent 写的叙述改成一块带底色 + 左边线的 `.dc-agent`，
+   和界面文案（标签、字段名）在排版上分开；不靠一个标签说明「这是 AI 写的」。
+3. **类别改为封闭词表**：`project / deps / build / cache / installer / media / doc / system / other`，
+   `setClaim` 校验，工具参数用 `enum`；旧的中文自由类别按别名迁移（未知归 `other`）。
+   自由词表的结果是「几乎每个目录都自成一类」，索引就没法用了。
+4. **删除设置菜单**（自动扫描、自动补语义开关、记忆规则、导出/导入快照全部没有入口）；
+   `exportProposal/importProposal` 与 `/proposal` 路由一起删除，`记住这类` 从批量条移除。
+5. **自动补语义改为每次扫描都触发**（`reason != agent`），不再要求 refresh/schedule。
+
+### 踩坑记录
+
+改 `pickedGroup` 时按「起点到 movePicked」切片，结果 `pickedGroup` 在 `runScan` 之前，
+一刀切掉了 `applyState / playZoom / runScan / save / copyList` 等一整段函数，
+页面白屏（`runScan is not defined`）。教训：**按函数名切片删除时，先确认两端的顺序**，
+删完立刻 `grep -c "const runScan"` 之类做一次结构断言，再继续。

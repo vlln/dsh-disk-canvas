@@ -17,7 +17,7 @@
   "latestModified": 1750000000000,
   "semantic": {                          // Agent 写的语义；没有就是 null（= 未标注，不是「安全」）
     "label": "Xcode 编译中间产物",        // 短名字，画布上优先显示
-    "category": "构建产物",               // 开放词汇，画布据此聚成 facet
+    "category": "build",                  // 封闭词表：project/deps/build/cache/installer/media/doc/system/other
     "claim": "删掉会重新编译，源码不受影响",
     "evidence": ["目录里有 Build/Intermediates.noindex"],   // 读了什么，可核验
     "by": "agent",                       // agent | human
@@ -92,47 +92,29 @@
 预算按子项切分（每个子项 40 万条目 / 20 秒，全局 60 秒）——这样最大的目录不会吃光预算，
 其它子项不会变成 0。扫描进行中再请求 `scan` 会**排队**，当前这轮结束后自动换根重扫。
 
-## 2.6 跨层索引
+## 2.6 标注索引
 
-扫描过程中顺带记录「目录名命中清理规则」的目录（不额外遍历），按类分组：
+只列**写过语义**的目录，按类别分组、嵌套只留最上层：
 
 ```jsonc
 {
-  "at": 1792396422487,
-  "truncated": false,
   "groups": [
-    { "id": "node_modules", "label": "node_modules", "hint": "依赖目录，可由 lockfile 重装",
-      "risk": "caution", "count": 72, "bytes": 13100000000, "files": 1200000, "shown": 72,
-      "entries": [{ "path": "…/node_modules", "bytes": 1200000000, "files": 80933, "risk": "caution",
-                    "claim": "依赖目录，可由 lockfile 重装（node_modules）", "confidence": 0.8,
-                    "source": "rule", "decision": null }] }
+    { "category": "build", "count": 3, "bytes": 5000000000,
+      "items": [{ "path": "/Users/me/app/.next", "name": ".next", "category": "build",
+                  "label": "构建产物", "bytes": 1240000000, "decision": null, "semanticState": "fresh" }] }
   ]
 }
 ```
 
-- **匹配的是名字，不是内容**：`node_modules` / `Caches` / `dist|build|out|target|.next|.nuxt|.turbo|.parcel-cache` /
-  `__pycache__|.pytest_cache|.mypy_cache|.ruff_cache|.venv|venv|.tox` / `Logs` / `.Trash` / `DerivedData`。
-- 同一类里**被其它条目包含的路径会去掉**（外层的 node_modules 已经包含内层，避免合计重复计数）。
-- `risk` 取「这类目录能不能重建」而不是路径位置：项目目录里的 node_modules 仍是 `caution`，不会被当成个人内容。
-- 每组最多带 200 条明细（`shown`），`count` / `bytes` 始终按全部命中算。
-- 快照里只给摘要（无 `entries`），完整索引走 `/patterns`；索引随扫描重建，持久在账本里（只留最近一次）。
+- 来源是 `claims`（语义），不再按目录名猜；没标注过的目录不会出现。
+- **嵌套去重**：A 包含 B 且两者都有语义时，只留 A。
+- 体积取自当前层或扫描时收集的命中目录；都没有时为 `null`（界面显示 `—`）。
+- 类别是**封闭词表**：`project / deps / build / cache / installer / media / doc / system / other`。
 
-## 2.7 记忆规则与自动扫描
+## 2.7 配置
 
-```jsonc
-{
-  "rules": [{ "id": "node_modules", "decision": "delete", "at": 1792397157264 }],
-  "config": { "autoScanHours": 168 }
-}
-```
-
-- **规则**按索引的分组 id 生效：每次扫描结束后，把「还没有任何标注」的同组目录补成规则里的决定，
-  标注带 `by: "rule"` 与 `rule: <groupId>`。人工改过的项不会被覆盖（规则只补空的）。
-- **撤销**规则会删掉规则本身，同时把 `by: "rule"` 且 `rule` 匹配、且没被改过的标注一起收回。
-- **自动扫描** `autoScanHours` ∈ [0, 720]，0 = 关；宿主进程用 `setInterval` 按间隔重扫上一次的根，
-  启动时若 `now - scannedAt` 超过间隔会补扫一次。dsh 不在运行就不会扫。
-- 导出计划里 `extra.{delete,keep}` 是「索引里、不在当前层」的那些决定，
-  避免批量标了 72 个 node_modules 却导不出来。
+当前没有设置界面。`POST /config` 仍接受 `{ autoScanHours }` 与 `{ autoAnnotate }`（API 用），
+记忆规则相关字段（`rememberRule` / `forgetRule` / `rules`）是历史接口，没有入口。
 
 ## 2.8 导出物
 
@@ -214,14 +196,14 @@ Agent 可以对「人已经做过的决定」写一句异议：
 ## 2.14 自动补语义
 
 - 画布打开时 `POST /bind { sessionId, preset }` 把当前会话和它跑的 preset 告诉宿主；多开会话时按 sessionId 记一份。
-- 用户主动扫描（`reason = refresh | schedule`）完成后，若有 `pending` 项（没语义或已过期），
+- **每次扫描结束**（`reason != agent`）后，若有 `pending` 项（没语义或已过期），
   宿主往这个会话投递一条 user 消息（source kind `disk-canvas`）：
 
   > 磁盘扫描完成：/Users/me（76 项）。其中 12 项还没有语义。请用 disk_canvas_state 读取 pending，
   > 挑最有把握的项用 disk_canvas_claim 写语义（带 evidence）；不要替用户做决定，也不要一次标太多。
 
-- 保护：同一次扫描只触发一次（按 `scannedAt` 去重）；只在 refresh / schedule 后触发
-  （`agent` / `navigate` / `boot` 不触发，避免自激）；**只投给 preset 为 `disk-cleanup` 的会话**
+- 保护：同一次扫描只触发一次（按 `scannedAt` 去重）；`agent` 触发的扫描不触发（避免自激）；
+  **只投给 preset 为 `disk-cleanup` 的会话**
   （别的 preset 里没有 `disk_canvas_*` 工具，投过去只会让 Agent 干瞪眼）；`config.autoAnnotate === false` 关闭。
   `state.auto` 暴露 `{bound, sessions, lastAt, enabled, error}` 便于诊断。
 - 走的是 `sessionController.commands.prompt(request, source)`——Remote 那层会把 source 固定成 `user`，
@@ -248,8 +230,6 @@ Agent 可以对「人已经做过的决定」写一句异议：
 | POST | `/plugins/dsh-disk-canvas/scan` | `{ path, reason }`；`reason` = `navigate` / `refresh` / `schedule` / `agent` / `boot`（缺省 `refresh`）。`navigate` 有快照时直接返回（`fromCache: true`），超过 10 分钟才后台刷新；只有非 `navigate` 才写历史 |
 | POST | `/plugins/dsh-disk-canvas/annotate` | `{ path, decision?, note? }` 写决定与备注（省略 `decision` 只改备注）；`{ paths: [...], decision? }` 批量写，≤500 条 |
 | GET | `/plugins/dsh-disk-canvas/index` | 标注索引：写过语义的目录，按类别分组、嵌套只留最上层 |
-| GET | `/plugins/dsh-disk-canvas/proposal` | 提案快照（决定 + 判断 + 规则） |
-| POST | `/plugins/dsh-disk-canvas/proposal` | 导入提案：只补缺，返回 `{decisions, claims, rules, skipped}` |
 | POST | `/plugins/dsh-disk-canvas/config` | `{ autoScanHours? }` / `{ rememberRule: {id, decision} }` / `{ forgetRule: id }` / `{ rules: [...] }`（整体替换），返回完整快照 |
 | GET | `/plugins/dsh-disk-canvas/plan` | 可导出的计划（仍不含执行） |
 

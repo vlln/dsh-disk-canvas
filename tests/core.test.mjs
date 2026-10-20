@@ -83,11 +83,11 @@ test('store: 批量标注一次写多个路径，去重且忽略非法路径', (
 test('store: Agent 语义覆盖规则空值并标记来源', () => {
   const store = createStore()
   scan(store, '/Users/me/Library', [{ path: '/Users/me/Library/Caches', name: 'Caches', kind: 'dir', bytes: 10, files: 1, latestModified: 1 }])
-  store.setClaim({ path: '/Users/me/Library/Caches', claim: '视频剪辑缓存，删了要重新渲染', category: '缓存', confidence: 0.8 })
+  store.setClaim({ path: '/Users/me/Library/Caches', claim: '视频剪辑缓存，删了要重新渲染', category: 'cache', confidence: 0.8 })
   const entry = store.snapshot().entries[0]
   assert.equal(entry.source, 'agent')
   assert.equal(entry.claim, '视频剪辑缓存，删了要重新渲染')
-  assert.equal(entry.semantic.category, '缓存')
+  assert.equal(entry.semantic.category, 'cache')
   assert.equal(entry.semantic.state, 'fresh')
 })
 
@@ -204,44 +204,6 @@ test('store: 自动扫描间隔写入配置并夹在合理范围', () => {
   assert.equal(store.snapshot().config.autoScanHours, 720)
   store.setConfig({ autoScanHours: -5 })
   assert.equal(store.snapshot().config.autoScanHours, 0)
-})
-
-test('store: 提案导入只补缺，不覆盖已有决定', () => {
-  const store = createStore()
-  scan(store, '/tmp/imp', [
-    { path: '/tmp/imp/a', name: 'a', kind: 'dir', bytes: 10, files: 1, latestModified: 1 },
-    { path: '/tmp/imp/b', name: 'b', kind: 'dir', bytes: 20, files: 1, latestModified: 1 },
-  ])
-  store.annotate({ path: '/tmp/imp/a', decision: 'keep' })
-  store.setRule({ id: 'caches', decision: 'keep' })
-
-  const result = store.importProposal({
-    annotations: {
-      '/tmp/imp/a': { decision: 'delete', note: '别人标的' },
-      '/tmp/imp/b': { decision: 'delete', note: '另一个人的判断' },
-      '/tmp/imp/c': { decision: 'delete' },
-      bad: { decision: 'delete' },
-    },
-    claims: { '/tmp/imp/b': { claim: '这是缓存', category: '缓存', confidence: 0.8 } },
-    rules: [{ id: 'node_modules', decision: 'delete' }, { id: 'caches', decision: 'delete' }],
-  })
-  assert.equal(result.decisions, 2, '导入 b 和计划外的 c（a 已有人做过决定）')
-  assert.equal(result.skipped, 1, 'a 已有人做过决定')
-  assert.equal(result.claims, 1)
-  assert.equal(result.rules, 1, 'caches 已存在，只补 node_modules')
-
-  const snap = store.snapshot()
-  assert.equal(snap.annotations['/tmp/imp/a'].decision, 'keep')
-  assert.equal(snap.annotations['/tmp/imp/b'].decision, 'delete')
-  assert.equal(snap.annotations['/tmp/imp/b'].note, '另一个人的判断')
-  assert.equal(snap.annotations['/tmp/imp/c'].decision, 'delete', '计划外的路径也照样记下')
-  assert.equal(snap.rules.find((r) => r.id === 'node_modules').decision, 'delete')
-  assert.equal(snap.rules.find((r) => r.id === 'caches').decision, 'keep')
-
-  const exported = store.exportProposal()
-  assert.equal(exported.kind, 'proposal')
-  assert.equal(exported.root, '/tmp/imp')
-  assert.equal(exported.annotations['/tmp/imp/b'].decision, 'delete')
 })
 
 test('scan: 目录体积是递归求和', async () => {
