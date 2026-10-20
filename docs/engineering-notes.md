@@ -790,3 +790,12 @@ Agent 自己也复述了「只写语义、没有替你做决定」。
 - 画布 / 检查器 / 对话三个大面板统一为同一套卡片语言：`--dc-card-r:12px`、1px `--dc-line` 边框、
   `--dc-card-shadow`（lv1）、10px 间距。
 - 检查器从绝对定位浮层改成 flex 兄弟列（`.dc-body{gap:10px;padding:10px}`），窄屏仍用媒体查询浮在画布上。
+
+
+## 2026-10-22 · 2.6.1 卡片边界不一致的根因
+
+- `--dc-line` / `--dc-card-r` / `--dc-card-shadow` 定义在 `.dc-root` 上，而对话面板是 `.dc-root` 的**兄弟**
+  （`.dc-home` 直接子节点），拿不到这些自定义属性 → `border:1px solid var(--dc-line)` 在计算值阶段失效，
+  面板实际是「无边框、无圆角、无阴影」。
+- 修：token 同时定义在 `.dc-root,.dc-home`；三张卡片改用 `border-width/style/color` 长写 +
+  `--dc-card-line` 统一边框色。实测三者 border/radius/shadow 完全一致（canvas 的底色 recess 是层次差，不是不一致）。
